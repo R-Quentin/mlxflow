@@ -1,0 +1,5 @@
+name: Model check-up (Monolix)
+description: >
+  Diagnostic report of one Monolix model: parameters, convergence, covariates,
+  observations vs predictions, VPC and residuals.
+create_dir: false

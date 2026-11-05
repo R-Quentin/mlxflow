@@ -1,0 +1,374 @@
+---
+title: "`r paste('PopPK Model Diagnostics -', basename(params$model_dir))`"
+date: "`r format(Sys.time(), '%Y-%m-%d %H:%M')`"
+output:
+  html_document:
+    toc: true
+    toc_float: false
+    code_folding: hide
+    number_sections: true
+    css: style80p.css
+params:
+  # MANDATORY : Monolix output folder (e.g. "C:/Users/.../mymodel) - Don't forget to save ChartsData
+  model_dir: "C:/Users/..." 
+  # Optional: change to TRUE to save outputs in addition to knitted report (saved in output_dir)
+  save_output: FALSE  
+  # Optional: directory where outputs are saved (when save_output is TRUE), defaults to model_dir (set to "" for default)
+  output_dir: "" 
+  # Optional: prefix for saved output names, defaults to the model folder name (set to "" for default)
+  prefix: ""
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = FALSE,
+                      fig.width = 8, fig.height = 5, fig.align = "center",
+                      out.width = "90%")
+
+# Runs a chunk's content and prints a short note instead of stopping the
+# whole report if it errors -- used for sections that don't apply to every
+# model (e.g. a structural-only model with no covariate tests at all, or a
+# fully fixed model with no Fisher information matrix to show).
+safe_run <- function(expr, label) {
+  tryCatch(expr, error = function(e) {
+    cat("*", label, "not available for this model:", conditionMessage(e), "\n")
+    invisible(NULL)
+  })
+}
+```
+
+# Run configuration 
+
+This is the only section you should normally need to edit between runs -- either directly in the chunk below, or by passing the same values to `rmarkdown::render(params = list(...))` instead (see `model_checkup_auto.R`).
+
+```{r run-config}
+# Accepts a Windows-style path pasted with backslashes ("C:\...\model") and
+# converts it to the forward-slash form R expects, noting when it does so.
+normalize_path <- function(path, label) {
+  if (!nzchar(path)) return(path)
+  normalized <- gsub("\\\\", "/", path)
+  if (!identical(normalized, path)) {
+    message("Note: ", label, " contained backslashes; converted to: ", normalized)
+  }
+  normalized
+}
+
+# ---- Required ----------------------------------------------------------------
+model_dir <- normalize_path(params$model_dir, "model_dir")
+
+# ---- Optional -------------------------------------------------------------
+output_dir <- normalize_path(params$output_dir, "output_dir")   # where saved outputs go
+prefix     <- params$prefix                                    # filename prefix for saved outputs
+
+if (!nzchar(model_dir)) {
+  stop("model_dir is required -- set params$model_dir in the YAML header above, ",
+      "or pass rmarkdown::render(params = list(model_dir = \"...\")).")
+}
+if (!dir.exists(model_dir)) stop("model_dir does not exist: ", model_dir)
+
+model_name <- basename(model_dir)
+if (!nzchar(output_dir)) output_dir <- model_dir
+if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+if (!nzchar(prefix)) prefix <- model_name
+
+# Save the outputs below to output_dir? Flip params$save_output to TRUE
+# (directly here, in the YAML above, or from model_checkup_auto.R) --
+# see "Save outputs" at the very end.
+SAVE_OUTPUTS <- params$save_output
+
+cat("Model:     ", model_name, "\n")
+cat("Model dir: ", model_dir, "\n")
+cat("Output dir:", output_dir, "\n")
+cat("Prefix:    ", prefix, "\n")
+cat("Saving outputs:", SAVE_OUTPUTS, "\n")
+```
+
+```{r load-functions}
+library(mlxflow)
+# Used directly by the chunks below (installed together with mlxflow)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(kableExtra)
+
+```
+
+```{r check-chartsdata}
+# Stops the run right away, with an explanation, if ChartsData is missing or
+# empty -- nothing below can be built without it.
+check_chartsdata(model_dir)
+```
+
+```{r resolve-dv}
+# Resolved ONCE here and passed explicitly to every function below that
+# takes a dv= argument -- avoids re-parsing .mlxtran (and re-triggering its
+# "Several .mlxtran files found" warning, if applicable) on every single
+# plot/table call in this report. The name is checked against the exported
+# ChartsData file names (the ground truth), so a dataset column called "dv"
+# whose observation is named e.g. "concentration" is handled. Edit dv_name
+# below to force another one.
+dv_name <- resolve_dv(model_dir)
+```
+
+```{r figure-sizes, include=FALSE}
+# A handful of figures scale with model complexity (number of parameters,
+# number of routes/strata) -- their height is computed here from the
+# underlying data, rather than fixed, so they stay legible whether the
+# model is a simple single-route PK model or a more complex one. Each is
+# capped so a very complex model doesn't produce an unreasonably tall
+# figure; adjust the cap (the first argument to min()) if you need more
+# room for a given model.
+conv_n_params <- n_distinct(read_convergence(model_dir)$parameter)
+conv_height   <- min(12, max(5, 1.6 * ceiling(conv_n_params / 4)))
+
+iparam_density  <- read_iparam_pdf(model_dir)$density
+iparam_n_params <- length(unique(str_remove(colnames(iparam_density)[str_ends(colnames(iparam_density), "_abscissa")], "_abscissa$")))
+iparam_height   <- min(12, max(5, 2.2 * ceiling(iparam_n_params / 3)))
+```
+
+# Estimation diagnostics 
+## Population parameters 
+
+```{r pop-params}
+model_summary <- read_summary(file.path(model_dir, "summary.txt"), full = TRUE)
+param_table   <- build_param_table(model_summary) |> clean_param_labels(overwrite = TRUE)
+
+t_param_table <- kable_param_table(param_table, caption = paste("Population parameters -", model_name)) |> 
+  kable_styling(full_width = FALSE, font_size = 11, bootstrap_options = c("striped", "bordered", "hover", "condensed")) |>
+  kableExtra::footnote(symbol = c("Conditional distribution"))
+t_param_table
+```
+
+## Fisher information matrix 
+
+```{r fisher-matrix, fig.height=6}
+p_fisher <- safe_run(plot_fisher_matrix(model_summary), "Fisher information matrix")
+p_fisher
+```
+
+## SAEM convergence 
+
+```{r convergence, fig.height=conv_height}
+p_convergence <- plot_convergence(model_dir)
+p_convergence
+```
+
+## Individual parameter distributions (shrinkage) 
+
+```{r iparam-distributions, fig.height=iparam_height}
+p_iparam_distributions <- plot_iparam_distribution(model_dir)
+p_iparam_distributions
+```
+
+## Covariate assessment 
+
+Random-effect x covariate correlation (covariate search) -- the heatmap below and the table underneath it show the same `Tests/correlationRandomEffectsCovariates.txt` data, just rendered two ways; the table is kept (for saving) but not printed here since it's large and mostly redundant with the heatmap. Pass `covariates = c(...)` to either `plot_covariate_search()` or `covariate_tests_table()` to restrict both to a handful of covariates of interest (case-insensitive substring match, e.g. `"WT"` also matches `"logtWT"`).
+
+```{r covariate-search-plot, fig.height=5, fig.width=10}
+p_covariate_search <- safe_run(plot_covariate_search(model_dir), "Covariate search heatmap")
+p_covariate_search
+```
+
+```{r covariate-search-table}
+t_covariate_search <- safe_run(covariate_tests_table(model_dir, which = "search"), "Covariate search table")
+# t_covariate_search
+```
+
+Confirmation tests for covariate effects already in the model (correlation test + Wald test):
+
+```{r covariate-confirmation-tables}
+t_covariate_confirmation <- safe_run(covariate_tests_table(model_dir, which = "confirmation"), "Covariate confirmation table")
+t_covariate_confirmation
+
+t_covariate_wald <- safe_run(covariate_tests_table(model_dir, which = "wald"), "Covariate Wald test table")
+t_covariate_wald
+```
+
+# Predictive performance 
+## Observed vs Predicted 
+
+split = TRUE below shows population/individual panels per route -- worth keeping on for a model with a meaningful route split, since it's more informative than pooling routes together; it's no longer required just to keep Monolix's own smoother from overlaying mismatched routes in a single panel (that mismatch is now detected automatically and falls back to a freshly fit smoother instead, whichever way split is set).
+
+```{r obspred, fig.width=6}
+# Size levers for this figure (same for every chunk in this report):
+#  - fig.width / fig.height (chunk options, inches): shape of the image and the
+#    text-to-plot proportions (text size is fixed in points, so a larger
+#    fig.width makes text relatively smaller); base_size= below sets text size.
+#  - out.width (chunk option, set to 90% for all chunks in `setup`): how wide the
+#    image is DISPLAYED in the html, whatever fig.width is -- e.g. add
+#    out.width = "60%" to the chunk header to make this figure smaller on screen.
+obspred_res <- obspred_diagnostics(model_dir, dv = dv_name, split = TRUE)
+# obspred_res$data / $metrics / $obspred / $aipe
+
+p_obspred <- obspred_res$obspred
+p_obspred
+```
+
+## Absolute individual prediction error 
+
+```{r aipe}
+p_aipe <- obspred_res$aipe
+p_aipe
+```
+
+## Metrics table 
+
+```{r metrics-table}
+metrics_display <- obspred_res$metrics |> select(-Prediction)   # packed via auto_pack_rows below instead
+
+t_metrics <- metrics_display |>
+  kable(booktabs = TRUE, caption = paste("Prediction-error metrics -", model_name)) |>
+  auto_pack_rows(obspred_res$metrics, "Prediction") |>
+  kable_styling(full_width = FALSE, font_size = 12, bootstrap_options = c("striped", "bordered", "hover")) |>
+  style_metrics_table(metrics_display)
+t_metrics
+```
+
+## Visual predictive check 
+
+facet_scales = "free" below lets both axes adjust per route/stratum panel (concentration ranges can differ a lot between e.g. an oral and an IM route); pass facet_scales = "free_x" (the function's own default, kept mainly for comparing percentile levels side by side) or "fixed" instead if that's not what you want for a given model.
+
+```{r vpc, fig.height=5}
+# show_observations = TRUE adds the raw observations (grey) to the VPC
+p_vpc <- plot_vpc(model_dir, dv = dv_name, facet_scales = "free", show_observations = TRUE)
+p_vpc
+```
+
+## NPDE 
+
+```{r npde-time, fig.height=5}
+p_npde_time <- plot_npde(model_dir, dv = dv_name, type = "time")
+p_npde_time
+```
+
+```{r npde-predictions, fig.height=5}
+p_npde_predictions <- plot_npde(model_dir, dv = dv_name, type = "predictions")
+p_npde_predictions
+```
+
+```{r npde-density, fig.height=5}
+p_npde_density <- plot_npde(model_dir, dv = dv_name, type = "density")
+p_npde_density
+```
+
+```{r npde-qq, fig.height=5}
+p_npde_qq <- plot_npde(model_dir, dv = dv_name, type = "qq")
+p_npde_qq
+```
+
+# Structure & covariate effects 
+
+Once the diagnostics above are satisfactory, here is what the covariate effects already in the model actually look like.
+
+```{r covariate-effects}
+covariate_effects_res <- safe_run(compute_covariate_effects(model_dir), "Covariate effects")
+
+t_covariate_effects          <- NULL
+p_covariate_effects          <- NULL   # named list, one panel per PK parameter (for individual saving)
+p_covariate_effects_combined <- NULL   # every parameter combined into one figure
+covfx_height                 <- 4
+
+if (!is.null(covariate_effects_res)) {
+
+  t_covariate_effects <- covariate_effects_res$table |>
+    mutate(Param_value = round(Param_value, 4)) |>
+    kable(booktabs  = TRUE,
+         col.names = c("Parameter", "Covariate", "Relationship", "Type", "Level", "Value", "Relative change (%)"),
+         caption   = sprintf("Relative effect of model's covariates \u2014 %s", model_name)) |>
+    kable_styling(full_width = FALSE, font_size = 11, bootstrap_options = c("striped", "hover")) |>
+    auto_pack_rows(covariate_effects_res$table, group_vars = c("Relationship", "Parameter")) |>
+    column_spec(
+      which(names(covariate_effects_res$table) == "Relative_change_pct"),
+      bold  = covariate_effects_res$table$Relative_change_pct != 0 & abs(covariate_effects_res$table$Relative_change_pct) > 20,
+      color = case_when(
+        covariate_effects_res$table$Relative_change_pct != 0 & abs(covariate_effects_res$table$Relative_change_pct) < 20 ~ "firebrick",
+        TRUE ~ "grey30"
+      )
+    ) |>
+    column_spec(1, italic = TRUE) |>
+    remove_column(c(1, 3))
+
+  p_covariate_effects          <- covariate_effects_res$plots
+  p_covariate_effects_combined <- combine_all_plots(covariate_effects_res)
+  covfx_height <- min(14, max(6, 4 * ceiling(length(covariate_effects_res$plots_flat) / 3)))
+}
+
+t_covariate_effects
+```
+
+```{r covariate-effects-plot, fig.height=covfx_height}
+p_covariate_effects_combined
+```
+
+# Save outputs 
+
+Flip `save_output` to `TRUE` in the params above (or from `model_checkup_auto.R`, then re-knit) to write the files below to `output_dir`. Every file name starts with `prefix`, so outputs from different models never collide in the same folder.
+
+```{r save-plots, eval=SAVE_OUTPUTS}
+save_plot <- function(plot, suffix, width = 8, height = 6) {
+  if (is.null(plot)) return(invisible(NULL))
+  ggsave(filename = file.path(output_dir, paste0(prefix, "_", suffix, ".png")),
+        plot = plot, width = width, height = height, dpi = 320)
+}
+
+save_plot(p_fisher, "fisher_matrix")
+save_plot(p_convergence, "convergence", height = conv_height)
+save_plot(p_iparam_distributions, "iparam_distributions", height = iparam_height)
+save_plot(p_covariate_search, "covariate_search", height = 5)
+save_plot(p_obspred, "obspred", height = 8)
+save_plot(p_aipe, "aipe")
+save_plot(p_vpc, "vpc", height = 5)
+save_plot(p_npde_time, "npde_time", height = 5)
+save_plot(p_npde_predictions, "npde_predictions", height = 5)
+save_plot(p_npde_density, "npde_density", height = 5)
+save_plot(p_npde_qq, "npde_qq", height = 5)
+save_plot(p_covariate_effects_combined, "covariate_effects_combined", width = 14, height = covfx_height)
+if (!is.null(p_covariate_effects)) {
+  for (nm in names(p_covariate_effects)) {
+    save_plot(p_covariate_effects[[nm]], paste0("covariate_effect_", nm), height = 6)
+  }
+}
+
+cat("Plots saved to:", output_dir, "\n")
+```
+
+```{r save-tables, eval=SAVE_OUTPUTS}
+# Tables are saved as standalone HTML (self-contained, no extra system
+# dependency). PNG export is also possible via save_kable(..., file = "*.png")
+# but additionally requires the webshot2 package (plus a headless browser).
+save_table <- function(kbl, suffix) {
+  if (is.null(kbl)) return(invisible(NULL))
+  save_kable(kbl, file.path(output_dir, paste0(prefix, "_", suffix, ".html")))
+}
+
+save_table(t_param_table, "param_table")
+save_table(t_covariate_search, "covariate_search_table")
+save_table(t_covariate_confirmation, "covariate_confirmation_table")
+save_table(t_covariate_wald, "covariate_wald_table")
+save_table(t_metrics, "metrics_table")
+save_table(t_covariate_effects, "covariate_effects_table")
+
+write.csv(obspred_res$metrics, file.path(output_dir, paste0(prefix, "_metrics.csv")), row.names = FALSE)
+if (!is.null(covariate_effects_res)) {
+  write.csv(covariate_effects_res$table, file.path(output_dir, paste0(prefix, "_covariate_effects.csv")), row.names = FALSE)
+}
+
+cat("Tables saved to:", output_dir, "\n")
+```
+
+```{r save-rdata, eval=SAVE_OUTPUTS}
+saveRDS(
+  list(obspred = obspred_res, covariate_effects = covariate_effects_res, summary = model_summary),
+  file = file.path(output_dir, paste0(prefix, "_diagnostics.rds"))
+)
+
+cat("Done --", model_name, "diagnostics complete.\n")
+```
+
+
+Instead of pressing the Knit button in RStudio, you can execute an R command.  
+Using Knit button will generates model_checkup.html in working directory by default.  
+The command let you rename the html output (e.g. with the prefix) and change is location (e.g. in output_dir).  
+-> See model_checkup_auto.R
+

@@ -1,0 +1,283 @@
+---
+title: "`r paste('PopPK Model Comparison -', params$label_1, 'vs', params$label_2)`"
+date: "`r format(Sys.time(), '%Y-%m-%d %H:%M')`"
+output:
+  html_document:
+    toc: true
+    toc_float: false
+    code_folding: hide
+    number_sections: true
+    css: style80p.css
+params:
+  # MANDATORY: Monolix results folders of the two models (summary.txt inside; ChartsData for the plots)
+  model_dir_1: "C:/Users/.../model_1"
+  model_dir_2: "C:/Users/.../model_2"
+  # Optional: names shown in tables and plots (set to "" for the folder names)
+  label_1: ""
+  label_2: ""
+  # Optional: change to TRUE to save tables and plots in addition to the knitted report
+  save_output: FALSE
+  # Optional: folder of the saved outputs (when save_output is TRUE)
+  output_dir: ""
+  # Optional: prefix of the saved file names
+  prefix: ""
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = FALSE,
+                      fig.width = 10, fig.height = 5, fig.align = "center",
+                      out.width = "100%")
+
+# Prints a short note instead of stopping the whole report when a section does not apply
+# to one of the models (e.g. ChartsData not exported, no standard errors)
+safe_run <- function(expr, label) {
+  tryCatch(expr, error = function(e) {
+    cat("*", label, "not available:", conditionMessage(e), "\n")
+    invisible(NULL)
+  })
+}
+```
+
+```{r load-functions}
+library(mlxflow)
+# Used directly by the chunks below (installed together with mlxflow)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(kableExtra)
+library(patchwork)
+```
+
+# Run configuration
+
+```{r run-config}
+model_dir_1 <- normalizePath(params$model_dir_1, winslash = "/", mustWork = TRUE)
+model_dir_2 <- normalizePath(params$model_dir_2, winslash = "/", mustWork = TRUE)
+label_1 <- if (nzchar(params$label_1)) params$label_1 else basename(model_dir_1)
+label_2 <- if (nzchar(params$label_2)) params$label_2 else basename(model_dir_2)
+labels  <- c(label_1, label_2)
+stem    <- paste0(label_1, "_vs_", label_2)
+
+SAVE_OUTPUTS <- isTRUE(params$save_output)
+prefix       <- if (nzchar(params$prefix)) params$prefix else stem
+output_dir   <- if (nzchar(params$output_dir)) params$output_dir else file.path(getwd(), paste0(stem, "_comparison"))
+if (SAVE_OUTPUTS) dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+# Saving helpers: do nothing unless save_output = TRUE
+save_plot <- function(p, suffix, width = 12, height = 5) {
+  if (SAVE_OUTPUTS && !is.null(p)) {
+    ggsave(file.path(output_dir, paste0(prefix, "_", suffix, ".png")), p, width = width, height = height, dpi = 300)
+  }
+  invisible(p)
+}
+save_table <- function(tbl, suffix) {
+  if (SAVE_OUTPUTS && !is.null(tbl)) {
+    kableExtra::save_kable(tbl, file.path(output_dir, paste0(prefix, "_", suffix, ".html")))
+  }
+  invisible(tbl)
+}
+
+cat("Model 1:", label_1, "->", model_dir_1, "\n")
+cat("Model 2:", label_2, "->", model_dir_2, "\n")
+cat("Saving outputs:", SAVE_OUTPUTS, if (SAVE_OUTPUTS) paste("->", output_dir), "\n")
+```
+
+```{r read-models}
+s1 <- read_summary(file.path(model_dir_1, "summary.txt"), full = TRUE)
+s2 <- read_summary(file.path(model_dir_2, "summary.txt"), full = TRUE)
+
+# The plot-based sections need the ChartsData of BOTH models
+has_charts <- vapply(c(model_dir_1, model_dir_2), function(d)
+  !inherits(try(check_chartsdata(d), silent = TRUE), "try-error"), logical(1))
+if (!all(has_charts)) {
+  cat("ChartsData missing for:", paste(labels[!has_charts], collapse = ", "),
+      "- the predictive-performance sections are skipped.\n")
+}
+both_charts <- all(has_charts)
+```
+
+# Models
+
+```{r models-overview}
+info_value <- function(s, what) {
+  v <- s$dataset_info$value[str_detect(s$dataset_info$info, what)]
+  if (length(v) == 0) "-" else as.character(v[[1]])
+}
+overview <- tibble(
+  Model         = labels,
+  Folder        = basename(c(model_dir_1, model_dir_2)),
+  Individuals   = c(info_value(s1, "individuals"), info_value(s2, "individuals")),
+  `Covariate relations` = c(length(s1$covariates), length(s2$covariates)),
+  `Log-likelihood by`   = c(s1$ll_method, s2$ll_method) |>
+    recode(is = "importance sampling", lin = "linearization", .default = "unknown")
+)
+overview |>
+  kable(booktabs = TRUE, caption = "Models compared") |>
+  kable_styling(full_width = FALSE, font_size = 12, bootstrap_options = c("striped", "hover"))
+```
+
+# Information criteria
+
+OFV, AIC and BIC are only comparable when the log-likelihood of both models was computed the same way.
+
+```{r criteria}
+criteria_warning <- NULL
+crit <- withCallingHandlers(
+  compare_criteria(s1, s2, labels = labels),
+  warning = function(w) { criteria_warning <<- conditionMessage(w); invokeRestart("muffleWarning") })
+if (!is.null(criteria_warning)) cat("**Warning:**", criteria_warning, "\n\n")
+
+t_criteria <- crit |>
+  kable(booktabs = TRUE, caption = sprintf("Information criteria (change = %s - %s)", label_2, label_1)) |>
+  kable_styling(full_width = FALSE, font_size = 12, bootstrap_options = c("striped", "hover")) |>
+  column_spec(1, bold = TRUE)
+save_table(t_criteria, "criteria")
+t_criteria
+```
+
+# Parameters
+
+Parameters are matched by name: a parameter present in one model only (e.g. a covariate effect) shows a dash for the other.
+
+```{r parameters}
+cmp <- compare_two_models(s1, s2, values = c("estimate", "rse_pct"), clean = TRUE)
+
+fmt <- function(x) ifelse(is.na(x), "\u2014", as.character(signif(as.numeric(x), 3)))
+disp <- cmp |>
+  transmute(type, parameter,
+            est_1 = fmt(estimate_1), est_2 = fmt(estimate_2),
+            change = ifelse(is.na(delta_rel_estimate) | delta_rel_estimate == "NA", "\u2014", delta_rel_estimate),
+            rse_1 = fmt(rse_pct_1), rse_2 = fmt(rse_pct_2))
+
+t_params <- disp |>
+  select(-type) |>
+  kable(booktabs = TRUE, escape = FALSE,
+        col.names = c("Parameter", label_1, label_2, "Change", label_1, label_2),
+        caption = "Parameter estimates and relative standard errors") |>
+  add_header_above(c(" " = 1, "Estimate" = 2, " " = 1, "RSE (%)" = 2)) |>
+  auto_pack_rows(disp, "type") |>
+  kable_styling(full_width = FALSE, font_size = 11, bootstrap_options = c("striped", "hover")) |>
+  column_spec(1, bold = TRUE)
+save_table(t_params, "parameters")
+t_params
+```
+
+# Predictive performance
+
+Both models are shown with their own axes: compare the shapes and the spread, not the scales.
+
+```{r obspred-compute, eval=both_charts}
+dv_1 <- resolve_dv(model_dir_1)
+dv_2 <- resolve_dv(model_dir_2)
+op1 <- safe_run(obspred_diagnostics(model_dir_1, dv = dv_1, split = TRUE), paste("Obs vs pred -", label_1))
+op2 <- safe_run(obspred_diagnostics(model_dir_2, dv = dv_2, split = TRUE), paste("Obs vs pred -", label_2))
+have_op <- !is.null(op1) && !is.null(op2)
+```
+
+## Prediction-error metrics
+
+```{r metrics, eval=both_charts}
+t_metrics <- NULL
+if (have_op) {
+  metrics_cmp <- compare_obspred_metrics(op1, op2, labels = labels)
+  # Group by observed variable only when there are several
+  groups <- c(if (n_distinct(metrics_cmp$Y_TYPE) > 1) "Y_TYPE", "Prediction")
+  t_metrics <- metrics_cmp |>
+    select(-any_of(c("DV", groups))) |>
+    kable(booktabs = TRUE, caption = sprintf("Prediction-error metrics (change = %s - %s)", label_2, label_1),
+          col.names = c("Metric", label_1, label_2, "Change")) |>
+    auto_pack_rows(metrics_cmp, groups) |>
+    kable_styling(full_width = FALSE, font_size = 12, bootstrap_options = c("striped", "bordered", "hover"))
+  save_table(t_metrics, "metrics")
+}
+t_metrics
+```
+
+## Observations vs predictions
+
+```{r obspred-plot, eval=both_charts, fig.height=5.5}
+p_obspred <- NULL
+if (have_op) {
+  p_obspred <- (op1$obspred + labs(title = label_1)) | (op2$obspred + labs(title = label_2))
+  save_plot(p_obspred, "obspred", height = 6)
+}
+p_obspred
+```
+
+## Absolute individual prediction error
+
+```{r aipe-plot, eval=both_charts}
+p_aipe <- NULL
+if (have_op) {
+  p_aipe <- (op1$aipe + labs(title = label_1)) | (op2$aipe + labs(title = label_2))
+  save_plot(p_aipe, "aipe")
+}
+p_aipe
+```
+
+## Visual predictive check
+
+```{r vpc, eval=both_charts, fig.height=8}
+v1 <- safe_run(plot_vpc(model_dir_1, dv = dv_1, facet_scales = "free", show_observations = TRUE), paste("VPC -", label_1))
+v2 <- safe_run(plot_vpc(model_dir_2, dv = dv_2, facet_scales = "free", show_observations = TRUE), paste("VPC -", label_2))
+p_vpc <- NULL
+if (!is.null(v1) && !is.null(v2)) {
+  p_vpc <- (v1 + labs(title = label_1)) / (v2 + labs(title = label_2))
+  save_plot(p_vpc, "vpc", height = 10)
+}
+p_vpc
+```
+
+## NPDE
+
+```{r npde-time, eval=both_charts}
+n1 <- safe_run(plot_npde(model_dir_1, dv = dv_1, type = "time"), paste("NPDE -", label_1))
+n2 <- safe_run(plot_npde(model_dir_2, dv = dv_2, type = "time"), paste("NPDE -", label_2))
+p_npde_time <- NULL
+if (!is.null(n1) && !is.null(n2)) {
+  p_npde_time <- (n1 + labs(title = label_1)) | (n2 + labs(title = label_2))
+  save_plot(p_npde_time, "npde_time")
+}
+p_npde_time
+```
+
+```{r npde-predictions, eval=both_charts}
+n1 <- safe_run(plot_npde(model_dir_1, dv = dv_1, type = "predictions"), paste("NPDE -", label_1))
+n2 <- safe_run(plot_npde(model_dir_2, dv = dv_2, type = "predictions"), paste("NPDE -", label_2))
+p_npde_predictions <- NULL
+if (!is.null(n1) && !is.null(n2)) {
+  p_npde_predictions <- (n1 + labs(title = label_1)) | (n2 + labs(title = label_2))
+  save_plot(p_npde_predictions, "npde_predictions")
+}
+p_npde_predictions
+```
+
+```{r npde-density, eval=both_charts}
+n1 <- safe_run(plot_npde(model_dir_1, dv = dv_1, type = "density"), paste("NPDE -", label_1))
+n2 <- safe_run(plot_npde(model_dir_2, dv = dv_2, type = "density"), paste("NPDE -", label_2))
+p_npde_density <- NULL
+if (!is.null(n1) && !is.null(n2)) {
+  p_npde_density <- (n1 + labs(title = label_1)) | (n2 + labs(title = label_2))
+  save_plot(p_npde_density, "npde_density")
+}
+p_npde_density
+```
+
+```{r npde-qq, eval=both_charts}
+n1 <- safe_run(plot_npde(model_dir_1, dv = dv_1, type = "qq"), paste("NPDE -", label_1))
+n2 <- safe_run(plot_npde(model_dir_2, dv = dv_2, type = "qq"), paste("NPDE -", label_2))
+p_npde_qq <- NULL
+if (!is.null(n1) && !is.null(n2)) {
+  p_npde_qq <- (n1 + labs(title = label_1)) | (n2 + labs(title = label_2))
+  save_plot(p_npde_qq, "npde_qq")
+}
+p_npde_qq
+```
+
+```{r save-results, include=FALSE, eval=SAVE_OUTPUTS}
+saveRDS(list(labels = labels, criteria = crit, parameters = cmp,
+             metrics = if (exists("metrics_cmp")) metrics_cmp else NULL),
+        file.path(output_dir, paste0(prefix, "_comparison.rds")))
+```

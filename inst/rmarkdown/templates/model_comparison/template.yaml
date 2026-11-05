@@ -1,0 +1,6 @@
+name: Model comparison (Monolix)
+description: >
+  Side-by-side comparison of two Monolix models: parameters and information
+  criteria in common tables, predictive performance (prediction-error metrics,
+  observations vs predictions, VPC, NPDE) as paired plots.
+create_dir: false

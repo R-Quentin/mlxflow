@@ -1,0 +1,23 @@
+Package: mlxflow
+Title: Model Building and Diagnostics Workflow for 'Monolix'
+Version: 0.0.0.9000
+Authors@R: 
+    person("Quentin", "Renou", email = "quentin.renou@amu-univ.fr", role = c("aut", "cre"))
+Description: Automates covariate model building for population pharmacokinetic
+    models run with 'Monolix': stepwise backward elimination driven by
+    likelihood ratio tests (through 'lixoftConnectors'), helpers around the
+    'Monolix' COSSAC and SCM searches, readers for the 'Monolix' output files,
+    diagnostic tables, plots and an 'Rmarkdown' report, and flowcharts of model
+    building runs. This is an unofficial tool: it is not affiliated with, nor
+    endorsed by, Lixoft or Simulations Plus.
+License: MIT + file LICENSE
+URL: https://github.com/R-Quentin/mlxflow
+BugReports: https://github.com/R-Quentin/mlxflow/issues
+Encoding: UTF-8
+Roxygen: list(markdown = FALSE)
+RoxygenNote: 7.3.1
+Depends: R (>= 4.1.0)
+Imports: dplyr, fs, ggplot2 (>= 3.5.0), ggraph, glue, igraph, kableExtra,
+    knitr, patchwork, purrr, readr, rlang, rmarkdown, scales, stringr, tibble, tidyr
+Suggests: lixoftConnectors, testthat (>= 3.2.0), withr
+Config/testthat/edition: 3
