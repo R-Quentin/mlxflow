@@ -1,0 +1,4 @@
+"Parameter","Covariate","Relationship","Type","Level","Param_value","Relative_change_pct"
+"V","wt","V ~ wt","Continuous","P5  (50.0)",5.92319523547616,-27.9
+"V","wt","V ~ wt","Continuous","P50 (71.7) [ref]",8.21358344774059,0
+"V","wt","V ~ wt","Continuous","P95 (86.3)",9.71554251454725,18.3

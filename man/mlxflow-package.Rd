@@ -17,7 +17,12 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Firstname Lastname \email{you@example.org}
+\strong{Maintainer}: Quentin Renou \email{quentin.renou@amu-univ.fr}
+
+Authors:
+\itemize{
+  \item Quentin Renou \email{quentin.renou@amu-univ.fr}
+}
 
 }
 \keyword{internal}

@@ -1,0 +1,2 @@
+parameter,statistics(sa),p-value(sa)
+beta_V_logtWt,6.38172,1.75e-10

@@ -644,3 +644,54 @@ run_cossac <- function(covariates = NULL, use_linearization = FALSE) {
 
   list(results = results, best_model = im)
 }
+
+
+#' Ready-made progress monitor for backward_elimination()
+#'
+#' Builds a function to pass as `diagnostic_fun`. After the base model and after
+#' each adopted removal it prints one line: the number of covariate relations, the
+#' OFV and BICc, the change in BICc since the previous model, and the largest
+#' eta-shrinkage (with its parameter), flagged when it exceeds `shrinkage_warn`.
+#' BICc is shown next to the LRT-based decision because it penalizes the
+#' coefficients differently: a removal accepted by the LRT can still read as a
+#' gain or a loss in BICc.
+#'
+#' It only reads the `summary.txt` of the adopted model, so it needs no Monolix
+#' call and no standard errors.
+#'
+#' @param shrinkage_warn Eta-shrinkage (percent, absolute value) above which the line
+#'   is flagged with `!` (default 30).
+#'
+#' @return A function with arguments `(iter, project_file)`.
+#' @examples
+#' \dontrun{
+#' backward_elimination("model.mlxtran", alpha = 0.01, diagnostic_fun = backward_monitor())
+#' }
+#' @export
+backward_monitor <- function(shrinkage_warn = 30) {
+  previous <- new.env()
+  previous$bicc <- NA_real_
+
+  function(iter, project_file) {
+    model_dir <- tools::file_path_sans_ext(project_file)
+    s    <- read_summary(file.path(model_dir, "summary.txt"), full = TRUE)
+    ofv  <- s$criteria$value[s$criteria$criterion == "OFV"]
+    bicc <- s$criteria$value[s$criteria$criterion == "BICc"]
+
+    shrink <- tryCatch({
+      tbl <- build_param_table(s, shrinkage_method = "CD")
+      tbl <- tbl[!is.na(tbl$shrinkage), ]
+      if (nrow(tbl) == 0) NULL else tbl[which.max(abs(tbl$shrinkage)), c("parameter", "shrinkage")]
+    }, error = function(e) NULL)
+
+    change <- if (is.na(previous$bicc)) "" else sprintf(" (change %+.1f)", bicc - previous$bicc)
+    shrink_txt <- if (is.null(shrink)) "" else {
+      flag <- if (abs(shrink$shrinkage) > shrinkage_warn) " !" else ""
+      sprintf(" | max shrinkage %.0f%% (%s)%s", shrink$shrinkage, sub("_pop$", "", shrink$parameter), flag)
+    }
+    message(sprintf("  [iteration %d] %d relation(s) | OFV %.2f | BICc %.2f%s%s",
+                    iter, length(s$covariates), ofv, bicc, change, shrink_txt))
+    previous$bicc <- bicc
+    invisible(NULL)
+  }
+}

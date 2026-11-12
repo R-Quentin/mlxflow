@@ -46,12 +46,22 @@ test_that("compare_models works on nested folders and on models without standard
   expect_equal(ncol(multi$data), 2 + 3 * 2)
 })
 
-test_that("compare_two_models returns value, delta and relative delta columns", {
+test_that("compare_two_models returns the data and a table, with optional highlighting", {
   r <- compare_two_models(fixture("summary_warfarin_example.txt"), fixture("summary_warfarin_final.txt"))
-  expect_true(all(c("estimate_1", "estimate_2", "delta_estimate", "delta_rel_estimate") %in% names(r)))
+  expect_named(r, c("data", "kable"))
+  expect_s3_class(r$kable, "knitr_kable")
+  expect_true(all(c("estimate_1", "estimate_2", "delta_estimate", "delta_rel_estimate") %in% names(r$data)))
   r2 <- compare_two_models(fixture("summary_warfarin_example.txt"), fixture("summary_ModelBuilding_007.txt"),
                            values = c("estimate", "rse_pct"))
-  expect_true(all(is.na(r2$rse_pct_2)))   # no standard errors in the second model
+  expect_true(all(is.na(r2$data$rse_pct_2)))   # no standard errors in the second model
+
+  # RSE above 30 percent in bold: Tlag_pop (22.9), ka_pop (28.6) stay plain, the 34.4 of
+  # warfarin_final's ka_pop is bold
+  hi <- compare_two_models(fixture("summary_warfarin_example.txt"), fixture("summary_warfarin_final.txt"),
+                           values = "rse_pct", bold_above = c(rse_pct = 30))
+  html <- as.character(hi$kable)
+  expect_match(html, 'font-weight: bold;"> 34.4 </td>', fixed = TRUE)
+  expect_no_match(html, 'font-weight: bold;"> 22.9 </td>', fixed = TRUE)
 })
 
 test_that("read_models warns when the log-likelihood methods differ", {

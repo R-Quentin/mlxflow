@@ -7,7 +7,7 @@ Model building and diagnostics workflow for population PK models run with
 > Simulations Plus. "Monolix" is their trademark; the `mlx` prefix only says that
 > the package works on Monolix files.
 
-Work in progress: version `0.0.0.9000`.
+Work in progress: version `0.0.1`.
 
 ## What it does
 

@@ -16,6 +16,8 @@ library(kableExtra)
 library(rmarkdown)
 
 # The package: readers, tables, diagnostics, comparisons, backward elimination, flowcharts
+# install.packages("remotes")
+# remotes::install_github("R-Quentin/mlxflow")
 library(mlxflow)
 
 
@@ -150,7 +152,7 @@ ex_sum_tbl |>
   column_spec(1, bold = TRUE)
 
 # NB: Monolix RSE thresholds are: >50%, >100% and >200%
-# The function supports full and partial estimation (eg no strandard error estimation)
+# The function supports full and partial estimation (eg no standard error estimation)
 
 
 plot_fisher_matrix(ex_sum, threshold = 0.6, ratio_warn = 20)
@@ -170,7 +172,7 @@ fs::dir_ls("warfarin_example/ChartsData")                     # Short path if cu
 fs::dir_ls(file.path(cur_dir, "warfarin_example/ChartsData")) # Full path in case its afar
 
 
-# --------------------------  run_diagnostics()  --------------------------- #
+#' ----- run_diagnostics()
 #' Function allowing you to run an Rmarkdown report template from the console.
 #' @param workflow    : MANDATORY input for function. Diagnostic workflow (.Rmd)
 #' @param knit_prefix : Optional input for function. Prefix used for html output (default is prefix)
@@ -181,12 +183,8 @@ fs::dir_ls(file.path(cur_dir, "warfarin_example/ChartsData")) # Full path in cas
 #' @param output_dir  : Optional input for Rmd. Directory used for saved outputs (plots & tables - defaults to model_dir)
 #' @param prefix      : Optional input for Rmd. Prefix used for saved outputs names
 
-# Most basic use
-run_diagnostics(model_dir   = "warfarin_example")
-
-# Two models side by side: parameters, information criteria (common tables) and predictive
-# performance (paired plots). Covariates and convergence stay in run_diagnostics().
-run_comparison("warfarin_example", "warfarin_final", label_1 = "Base", label_2 = "Final")
+# Most basic use:
+run_diagnostics(model_dir = "warfarin_example")
 
 
 # In "2.5 Covariate assessment" section, it looks like wt could be a covariate
@@ -226,6 +224,9 @@ set_SCM <- getModelBuildingSettings()
   # Set covariates and parameters
   set_SCM$covariates <- c("sex", "logtWt")
   set_SCM$parameters <- c("Tlag", "ka", "V", "Cl")
+  
+  # Disable linearisation
+  set_SCM$useLin = FALSE
 }
 
 # -> Run
@@ -238,7 +239,12 @@ SCM_results |> saveRDS("SCM_results.rds")
 # SCM_results <- readRDS("SCM_results.rds") # Reload without rerun
 
 # Best model number
-which(map_lgl(SCM_results, ~ .x$bestModel %in% TRUE)) # 7 : logtWt ~ V
+which(map_lgl(SCM_results, ~ .x$bestModel %in% TRUE)) 
+# Gives either 7 or 23. 
+# If you get 7, SCM stopped early. 
+# If you get 23 SCM went further before coming back (backward)
+# Anyway best relationship is : logtWt ~ V.
+
 
 # Build table
 SCM_results_table <- imap_dfr(SCM_results, \(res, idx) {
@@ -284,6 +290,9 @@ set_COSSAC <- getModelBuildingSettings()
   # Set covariates and parameters
   set_COSSAC$covariates <- c("sex", "logtWt")
   set_COSSAC$parameters <- c("Tlag", "ka", "V", "Cl")
+  
+  # Disable linearisation
+  set_COSSAC$useLin = FALSE
 }
 
 # -> Run
@@ -335,8 +344,8 @@ forward_df <- forward_df |>
   mutate(covariates = map(covariates, clean_cov_labels))
 
 # Construct SCM data
-# alpha MUST be the level used by the Monolix run (set_SCM$threshold$lrt[1] = 0.01 above): the
-# builder replays Monolix's decisions from the summaries, it does not decide anything itself
+# Alpha MUST be the level used by the Monolix run to reflect the Monolix's decisions. 
+# Builder can choose a different value above (via set_SCM$threshold$lrt[1] = 0.01).
 forward_data <- build_scm_data(forward_df, alpha = 0.01)
 
 # Get full model
@@ -344,19 +353,21 @@ full_model <- forward_df %>%
   filter(model_name == forward_data$last_best_name) %>%
   pull(covariates)
 
-message("Last selected model: ", forward_data$last_best_name,
+message("Last selected model: ", forward_data$last_best_name, 
         "\nFull covariate model: ", paste(unlist(full_model), collapse = ", "))
 
-# Optional cross-check: does the replayed path end on the model Monolix retained?
-# Reads Monolix's own report (modelBuilding.txt, in the model building folder - adapt the path if
-# it is elsewhere): no need for Monolix to be running nor for SCM_results.
+# If alpha coincides, mlxflow "$last_best_name" is the same as Monolix "$bestModel"
+
+# However you can alaways cross-check Monolix's own report 
+# (modelBuilding.txt in the model building folder)
 mb_report <- read_model_building_report("warfarin_example/SCM")
-get_monolix_best_model(mb_report, forward_df)$model_name   # compare with forward_data$last_best_name
+get_monolix_best_model(mb_report, forward_df)$model_name
+
 
 # Visualisation
 plot_flowchart(
   forward_data,
-  title         = "Forward SCM - Rilpivirine PopPK",
+  title         = "Forward SCM - Warfarin PopPK",
   iter_label    = "Iteration",
   best_label    = "Best of iteration",
   node_size     = 30
@@ -372,6 +383,7 @@ cossac_df <- read_models(file.path("warfarin_example/COSSAC"), full = FALSE) |>
 # Construct COSSAC data
 cossac_data <- build_cossac_data(cossac_df, alpha = 0.01) # = set_COSSAC$threshold$lrt[1]
 
+
 # Get full model
 full_model <- cossac_df %>%
   filter(model_name == cossac_data$last_best_name) %>%
@@ -379,13 +391,12 @@ full_model <- cossac_df %>%
 
 message("Last selected model: ", cossac_data$last_best_name,
         "\nFull covariate model: ", paste(unlist(full_model), collapse = ", "))
-# 003 ok
 
 
-# Visualisation + Short color management -> on the fly
+# Visualisation + Short colour management (on the fly)
 plot_flowchart(
   cossac_data,
-  title = "COSSAC - Rilpivirine PopPK",
+  title = "COSSAC - Warfarin PopPK",
   node_size     = 30,
   colors = modifyList(
     eval(formals(plot_flowchart)$colors),  
@@ -394,6 +405,10 @@ plot_flowchart(
     )
   ) 
 )
+
+
+# Alternative linear version
+# plot_flowchart(scm_data = build_cossac_data_linear(cossac_df, alpha = 0.01))
 
 
 
@@ -409,11 +424,11 @@ plot_flowchart(
 # - After manually deleting or adding a covariate
 
 
-# -------------------------  backward_elimination()  ------------------------- #
-# Arguments and output files are documented in the header of backward_elimination()
-# (auto_backward_functions.R). In short: every model is saved as
-#   run<NNN>_I<k>_<parameter>_<covariate>   (NNN = run number, never repeated; k = iteration)
-# and backward_log.csv holds every test (delta OFV, df, p-value, verdict).
+#' ----- backward_elimination():
+#' Arguments and output files are documented in the header of backward_elimination()
+#' In short: every model is saved as run<NNN>_I<k>_<parameter>_<covariate>   
+#' (NNN = run number, never repeated; k = iteration)
+#' and backward_log.csv holds every test (delta OFV, df, p-value, verdict).
 
 
 
@@ -421,25 +436,21 @@ plot_flowchart(
 # Those are the best model number depending on model building strategy
 # full_mod_path <- "warfarin_example/SCM/ModelBuilding_007/ModelBuilding_007.mlxtran"    # If SCM run
 # full_mod_path <- "warfarin_example/COSSAC/ModelBuilding_002/ModelBuilding_002.mlxtran" # If COSSAC run
-#
-# But for demonstration purposes we will choose an overparametered model (with logtWt ~ Cl)
+
+# But for demonstration purposes we will choose an over-parametrized model (with logtWt ~ Cl)
 full_mod_path <- "warfarin_example/SCM/ModelBuilding_016/ModelBuilding_016.mlxtran"    # If SCM run
 full_mod_path <- "warfarin_example/COSSAC/ModelBuilding_003/ModelBuilding_003.mlxtran" # If COSSAC run
-
 
 
 # -> Output directory
 backward_path <- "warfarin_example/Backward"
 
 
-# -> Personalized diagnostics
-# TODO: This example brings nothing more to the diagnostic.
-my_diag <- function(step, project_file) {
-  s <- read_summary(file.path(tools::file_path_sans_ext(project_file), "summary.txt"))
-  crit <- function(x) s$criteria$value[s$criteria$criterion == x]
-  message(sprintf("  [diagnostics] step %02d | %s | %d relation(s) | OFV = %.2f | BICc = %.2f",
-                  step, s$model_name, length(s$covariates), crit("OFV"), crit("BICc")))
-}
+# -> Optional progress monitor
+# backward_monitor() prints one line after the base model and after each adopted removal: number of
+# relations, OFV, BICc (and its change), largest eta-shrinkage (flagged above shrinkage_warn).
+# Any function(iter, project_file) can be used instead, e.g. to launch run_diagnostics() on each model.
+my_diag <- backward_monitor(shrinkage_warn = 30)
 
 # -> Run backward check
 result <- backward_elimination(
@@ -450,7 +461,7 @@ result <- backward_elimination(
   save_all       = TRUE,     #' save all model run, change to FALSE to keep best only
   # resume         = TRUE,     #' resume from last finished run in case of failure
   overwrite      = TRUE,     #' overwrite existing output_dir (parameter changed?)
-  # diagnostic_fun = my_diag,
+  diagnostic_fun = my_diag,
   output_dir     = backward_path
 )
 
@@ -475,7 +486,6 @@ backward_df <- read_models("warfarin_example/Backward", full = FALSE)
 backward_df <- backward_df |>
   mutate(covariates = map(covariates, clean_cov_labels))
 
-
 backward_data <- build_backward_data(backward_df, alpha = 0.01) # = alpha given to backward_elimination()
 
 # head(backward_data$nodes |> select(model_id, iter, added_cov, delta_OFV, significant, is_best))
@@ -487,8 +497,9 @@ last_model <- backward_df %>%
 message("Last selected model: ", backward_data$last_best_name,
         "\nLast covariate model: ", paste(unlist(last_model), collapse = ", "))
 
+
+# Example of large colour management (semi-permanent)
 {
-  # Large color managment
   backward_colors <- eval(formals(plot_flowchart)$colors)
   backward_colors$base    <- list(fill = "green4", border = "darkgreen", font = "white") # Colours of forward last best (base model)
   backward_colors$best    <- list(fill = "brown3", border = "brown4",    font = "white",  arrow = "brown3") # Dropped (max)
@@ -496,10 +507,9 @@ message("Last selected model: ", backward_data$last_best_name,
   backward_colors$sig     <- list(fill = "gray90", border = "gray30",    font = "grey30", arrow = "gray80") # Kept
 }
 
-
 plot_flowchart(
   backward_data,
-  title         = "Backward Elimination - Rilpivirine PopPK",
+  title         = "Backward Elimination - Warfarin PopPK",
   iter_label    = "Iteration",
   best_label    = "Dropped (best of iteration)",
   sig_label     = "Significant",
@@ -507,32 +517,30 @@ plot_flowchart(
   colors        = backward_colors
 )
 
-# TODO: 
-# Error in `graph_from_data_frame()` at Forward_Backward_res_functions.R:2023:3:
-# ! `d` should contain at least two columns
-
 
 
 
 # ----- Combined Flowchart
+# Get a full forward + backward flowchart plot
+
 # SCM
 merged_data_SCM <- merge_scm_data(forward_data, backward_data, gap = 2)
 # str(merged_data_SCM, max.level = 2) # Check 
 
-combined_flowchart_SCM <- plot_flowchart_combined(
+plot_flowchart_combined(
   merged_data_SCM,
-  title              = "Covariate Model Building - Rilpivirine PopPK",
+  title              = "Covariate Model Building - Warfarin PopPK",
   colors_backward    = backward_colors,
   node_size          = 30
 )
 
 
-# COSSAC
+# COSSAC + Colour management (optional)
 merged_data_COSSAC <- merge_scm_data(cossac_data, backward_data, gap = 2)
 
 plot_flowchart_combined(
   merged_data_COSSAC,
-  title              = "Covariate Model Building - Rilpivirine PopPK",
+  title              = "Covariate Model Building - Warfarin PopPK",
   forward_title      = "Forward inclusion (COSSAC)",
   colors_forward     = modifyList(
     eval(formals(plot_flowchart_combined)$colors_forward),  
@@ -550,7 +558,7 @@ plot_flowchart_combined(
 
 # Final model                ===================================================
 
-# We keep/go back to the CL ~ logWT model
+# Final model is logWT 
 final_mod_path <- file.path(cur_dir, "warfarin_example/SCM/ModelBuilding_016/ModelBuilding_016.mlxtran")    # If SCM run
 final_mod_path <- file.path(cur_dir, "warfarin_example/COSSAC/ModelBuilding_002/ModelBuilding_002.mlxtran") # If COSSAC run
 
@@ -573,10 +581,22 @@ run_diagnostics(
   prefix      = "warfarin_FINAL"
 )
 
+# Let's compare our final model to where we started
+# Side by side: parameters, information criteria (common tables) 
+# and predictive performance (paired plots).
+# Covariates and convergence stay in run_diagnostics().
+run_comparison("warfarin_example", "warfarin_final", label_1 = "Base", label_2 = "Final")
+
+
 
 
 
 # Model summary comparison   ===================================================
+
+# Apart from the comparison template provided (see above), you might want to use
+# the functions independently or compare more than two models at once.
+
+
   ## Two models comparison      ------------------------------------------------
     ### ----- Situation A -----
 # Backward deletion found logtWt ~ Cl should be deleted but you have a doubt.
@@ -599,21 +619,26 @@ model_without <- read_summary("warfarin_example/COSSAC/ModelBuilding_002/ModelBu
 #     - values           : column(s) to compare (estimate, rse_pct etc.). Comparison following : second - first
 #     - clean            : if TRUE (default), clean covariates label (beta_CL_WT -> ~WT)
 
-one_param_two_mod <- compare_two_models(first = model_with, second = model_without, values = "estimate", clean = TRUE)
-one_param_two_mod # Raw table
+one_param_two_mod <- compare_two_models(
+  first  = model_with, 
+  second = model_without, 
+  values = "estimate", 
+  clean  = TRUE
+  )
 
-# We can style the table
-one_param_two_mod |> 
-  select(-type) |> 
-  mutate(across(everything(), \(x) ifelse(is.na(x) | x == "NA", "\u2014", as.character(x)))) |> 
-  kable(
-    booktabs  = TRUE, 
-    col.names = c("Parameter", "Estimate¹", "Estimate²", "\u0394", "Relative \u0394"),
-    caption   = "Parameter changes"
-  ) |> 
-  auto_pack_rows(one_param_two_mod, "type") |> 
-  kableExtra::footnote(number = c(model_with$model_name, model_without$model_name)) |> 
-  kable_styling(full_width = FALSE, font_size = 11, bootstrap_options = c("striped", "hover"))
+# A list: the data and a ready-made table
+one_param_two_mod$data    # raw table
+one_param_two_mod$kable   # styled table (the footnote gives the two models)
+
+# The table is a kableExtra object, so it can be styled further
+one_param_two_mod$kable |> 
+  kable_styling(font_size = 9)
+
+
+# You can also use
+compare_criteria(first = model_with, second = model_without)
+# (compare_obspred_metrics() compares the prediction errors of models whose ChartsData was exported:
+#  see situation B)
 
 
 
@@ -625,52 +650,59 @@ final <- read_summary("warfarin_final/summary.txt", full = TRUE)
 
 # -> Now we look at more columns (and compute the differences)
 
-# compare_two_models():
-# Fully join TWO models and compare one or several columns (delta columns computed)
-#     - first and second : models (read_summary(..., full = TRUE) objects, summary.txt paths or model folders)
-#     - values           : column(s) to compare (estimate, rse_pct etc.). Comparison following : second - first
-#     - clean            : if TRUE (default), clean covariates label (beta_CL_WT -> ~WT)
+#' ----- compare_two_models():
+#' Fully join TWO models and compare one or several columns (delta columns computed)
+#'     - first and second : models (read_summary(..., full = TRUE) objects, summary.txt paths or model folders)
+#'     - values           : column(s) to compare (estimate, rse_pct etc.). Comparison following : second - first
+#'     - clean            : if TRUE (default), clean covariates label (beta_CL_WT -> ~WT)
 
-all_param_two_mod <- compare_two_models(first = base, second = final, values = c("estimate", "rse_pct"), clean = TRUE)
-all_param_two_mod
+# bold_above: values above a threshold are printed in bold in the table (here RSE > 30 %)
+all_param_two_mod <- compare_two_models(
+  first      = base, 
+  second     = final, 
+  values     = c("estimate", "rse_pct"), 
+  clean      = TRUE,
+  bold_above = c(rse_pct = 30)
+  )
 
-all_param_two_mod |> 
-  select(-type) |> 
-  mutate(across(everything(), \(x) ifelse(is.na(x) | x == "NA", "\u2014", as.character(x)))) |> 
-  kable(
-    booktabs  = TRUE, 
-    col.names = c("Parameter", 
-                  "Estimate¹", "Estimate²", "\u0394", "Relative \u0394",
-                  "RSE (%)¹", "RSE (%)²",  "\u0394", "Relative \u0394"),
-    caption   = "Parameter changes"
-  ) |> 
-  auto_pack_rows(all_param_two_mod, "type") |> 
-  kableExtra::footnote(number = c(base$model_name, final$model_name)) |> 
-  kable_styling(full_width = FALSE, font_size = 11, bootstrap_options = c("striped", "bordered", "hover"))
+all_param_two_mod$data
+all_param_two_mod$kable
 
+# Any other formatting goes through kableExtra, e.g. italic relative change of the estimates (column 5)
+all_param_two_mod$kable |> 
+  column_spec(5, italic = TRUE)
+
+# Prediction errors (MPE, RMSE, ...) of the two models; read from their ChartsData
+compare_obspred_metrics(first = base, second = final, labels = c("Base", "Final"))
 
 
 
   ## Multiple models comparison ------------------------------------------------
 
 # Just for example : COSSAC workflow models comparison
-# A real situation coul be : Is IOV useful? Try IOV implementation on each parameter and compare
+# A real situation coul be : Is IOV useful? Try IOV implementation on each parameter and compare.
 
-# -> One colum :
+# One column
 one_param_all_mod <- compare_models(dir = "warfarin_example/COSSAC", values = "estimate", clean = TRUE)
+one_param_all_mod$data
+one_param_all_mod$kable
 
-all_param_all_mod <- compare_models(dir = "warfarin_example/COSSAC", values = c("estimate", "rse_pct"), clean = TRUE)
+# Multiple columns
+all_param_all_mod <- compare_models(dir = "warfarin_example/COSSAC", values = c("estimate", "rse_pct"), clean = TRUE,
+                                    bold_above = c(rse_pct = 30))
+all_param_all_mod$data
+all_param_all_mod$kable
 
 
 
-
-#
 
 # Convergence assessment     ===================================================
 
-runAssessment()
+#' @If not done already, run: loadProject(projectFile = "warfarin_example.mlxtran")
 
-# -> Personnalized settings
+# runAssessment()
+
+# -> Personalized settings
 set <- getAssessmentSettings()
 set$nbRuns             <- 10
 set$extendedEstimation <- TRUE
@@ -682,67 +714,17 @@ runAssessment(settings = set)
 
 AssessmentResults <- getAssessmentResults()
 
-# Format data
-AsRes_all <- imap_dfr(AssessmentResults, \(res, idx) {
-  df <- res$populationParameters$convergence
-  df |> 
-    mutate(
-      iteration = seq_len(n()),
-      run       = factor(idx)
-    )
-})
+# -> Save the results to keep them with the model (they only exist in the R session otherwise)
+saveRDS(AssessmentResults, "warfarin_example/AssessmentResults.rds")
 
-param_levels <- names(AssessmentResults[[1]]$populationParameters$convergence)
-param_levels <- c("convergenceIndicator", setdiff(param_levels, "convergenceIndicator"))
+# -> Plots: the lines of the runs should end on the same values
+plot_convergence_assessment(AssessmentResults, which = "iterations")
 
-AsRes_long <- AsRes_all |> 
-  pivot_longer(
-    cols      = -c(iteration, run),
-    names_to  = "parameter",
-    values_to = "value"
-  ) |> 
-  mutate(parameter = factor(parameter, levels = param_levels))
+# Final estimate of each run (ci = TRUE adds the 95 % interval)
+plot_convergence_assessment(AssessmentResults, which = "estimates", ci = FALSE)
 
+# The reshaped data, if you want to make your own plots
+tidy_convergence_assessment(AssessmentResults)
 
-AsRes_last <- imap_dfr(AssessmentResults, \(res, idx) {
-  final_vals <- res$populationParameters$convergence |> 
-    slice_tail(n = 1) |> 
-    select(-convergenceIndicator) |>
-    pivot_longer(everything(), names_to = "parameter", values_to = "estimate")
-  
-  se_vals <- res$standardErrors$values
-  param_names <- unique(final_vals$parameter)
-  
-  if (length(se_vals) == length(param_names)) {
-    final_vals$se <- se_vals
-  } else {
-    final_vals$se <- NA 
-  }
-  
-  final_vals |> mutate(run = factor(idx))
-}) |> 
-  mutate(
-    parameter = factor(parameter, levels = param_levels),
-    ymin = estimate - 1.96 * se,
-    ymax = estimate + 1.96 * se
-  )
-
-
-
-# Plot iterations
-ggplot(AsRes_long, aes(x = iteration, y = value, color = run)) +
-  geom_line(alpha = 0.7, linewidth = 0.6) +
-  facet_wrap(~ parameter, scales = "free_y") +
-  theme_bw()
-
-
-
-# Plot summary
-ggplot(AsRes_last, aes(x = run, y = estimate, color = run)) +
-  geom_point() +
-  # geom_errorbar(aes(ymin = ymin, ymax = ymax), width = 0.2, alpha = 0.8) +
-  facet_wrap(~ parameter, scales = "free_y") +
-  theme_bw() +
-  theme(legend.position  = "none")
-
-
+# -> It can also be a section of the model report (see run_diagnostics()):
+run_diagnostics("warfarin_example", assessment = "warfarin_example/AssessmentResults.rds")

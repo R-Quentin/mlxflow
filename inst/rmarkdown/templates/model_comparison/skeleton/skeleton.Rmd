@@ -30,6 +30,9 @@ knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = FALSE,
                       fig.width = 10, fig.height = 5, fig.align = "center",
                       out.width = "100%")
 
+# Optional analyses that did not run leave NULL objects: printing them would show "NULL" in the report
+show_if <- function(x) if (is.null(x)) invisible(NULL) else x
+
 # Prints a short note instead of stopping the whole report when a section does not apply
 # to one of the models (e.g. ChartsData not exported, no standard errors)
 safe_run <- function(expr, label) {
@@ -142,7 +145,7 @@ t_criteria
 Parameters are matched by name: a parameter present in one model only (e.g. a covariate effect) shows a dash for the other.
 
 ```{r parameters}
-cmp <- compare_two_models(s1, s2, values = c("estimate", "rse_pct"), clean = TRUE)
+cmp <- compare_two_models(s1, s2, values = c("estimate", "rse_pct"), clean = TRUE)$data
 
 fmt <- function(x) ifelse(is.na(x), "\u2014", as.character(signif(as.numeric(x), 3)))
 disp <- cmp |>
@@ -185,14 +188,14 @@ if (have_op) {
   # Group by observed variable only when there are several
   groups <- c(if (n_distinct(metrics_cmp$Y_TYPE) > 1) "Y_TYPE", "Prediction")
   t_metrics <- metrics_cmp |>
-    select(-any_of(c("DV", groups))) |>
+    select(metric, all_of(labels), delta) |>
     kable(booktabs = TRUE, caption = sprintf("Prediction-error metrics (change = %s - %s)", label_2, label_1),
           col.names = c("Metric", label_1, label_2, "Change")) |>
     auto_pack_rows(metrics_cmp, groups) |>
     kable_styling(full_width = FALSE, font_size = 12, bootstrap_options = c("striped", "bordered", "hover"))
   save_table(t_metrics, "metrics")
 }
-t_metrics
+show_if(t_metrics)
 ```
 
 ## Observations vs predictions
@@ -203,7 +206,7 @@ if (have_op) {
   p_obspred <- (op1$obspred + labs(title = label_1)) | (op2$obspred + labs(title = label_2))
   save_plot(p_obspred, "obspred", height = 6)
 }
-p_obspred
+show_if(p_obspred)
 ```
 
 ## Absolute individual prediction error
@@ -214,7 +217,7 @@ if (have_op) {
   p_aipe <- (op1$aipe + labs(title = label_1)) | (op2$aipe + labs(title = label_2))
   save_plot(p_aipe, "aipe")
 }
-p_aipe
+show_if(p_aipe)
 ```
 
 ## Visual predictive check
@@ -227,7 +230,7 @@ if (!is.null(v1) && !is.null(v2)) {
   p_vpc <- (v1 + labs(title = label_1)) / (v2 + labs(title = label_2))
   save_plot(p_vpc, "vpc", height = 10)
 }
-p_vpc
+show_if(p_vpc)
 ```
 
 ## NPDE
@@ -240,7 +243,7 @@ if (!is.null(n1) && !is.null(n2)) {
   p_npde_time <- (n1 + labs(title = label_1)) | (n2 + labs(title = label_2))
   save_plot(p_npde_time, "npde_time")
 }
-p_npde_time
+show_if(p_npde_time)
 ```
 
 ```{r npde-predictions, eval=both_charts}
@@ -251,7 +254,7 @@ if (!is.null(n1) && !is.null(n2)) {
   p_npde_predictions <- (n1 + labs(title = label_1)) | (n2 + labs(title = label_2))
   save_plot(p_npde_predictions, "npde_predictions")
 }
-p_npde_predictions
+show_if(p_npde_predictions)
 ```
 
 ```{r npde-density, eval=both_charts}
@@ -262,7 +265,7 @@ if (!is.null(n1) && !is.null(n2)) {
   p_npde_density <- (n1 + labs(title = label_1)) | (n2 + labs(title = label_2))
   save_plot(p_npde_density, "npde_density")
 }
-p_npde_density
+show_if(p_npde_density)
 ```
 
 ```{r npde-qq, eval=both_charts}
@@ -273,7 +276,7 @@ if (!is.null(n1) && !is.null(n2)) {
   p_npde_qq <- (n1 + labs(title = label_1)) | (n2 + labs(title = label_2))
   save_plot(p_npde_qq, "npde_qq")
 }
-p_npde_qq
+show_if(p_npde_qq)
 ```
 
 ```{r save-results, include=FALSE, eval=SAVE_OUTPUTS}

@@ -17,6 +17,9 @@ params:
   output_dir: "" 
   # Optional: prefix for saved output names, defaults to the model folder name (set to "" for default)
   prefix: ""
+  # Optional: results of a convergence assessment, i.e. the object returned by lixoftConnectors::getAssessmentResults()
+  # (or the path of an .rds file holding it). NULL (default) leaves the section out
+  assessment: null
 editor_options: 
   chunk_output_type: console
 ---
@@ -25,6 +28,9 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = FALSE,
                       fig.width = 8, fig.height = 5, fig.align = "center",
                       out.width = "90%")
+
+# Optional analyses that did not run leave NULL objects: printing them would show "NULL" in the report
+show_if <- function(x) if (is.null(x)) invisible(NULL) else x
 
 # Runs a chunk's content and prints a short note instead of stopping the
 # whole report if it errors -- used for sections that don't apply to every
@@ -77,11 +83,10 @@ if (!nzchar(prefix)) prefix <- model_name
 # see "Save outputs" at the very end.
 SAVE_OUTPUTS <- params$save_output
 
-cat("Model:     ", model_name, "\n")
-cat("Model dir: ", model_dir, "\n")
-cat("Output dir:", output_dir, "\n")
-cat("Prefix:    ", prefix, "\n")
-cat("Saving outputs:", SAVE_OUTPUTS, "\n")
+# Optional convergence assessment (the section is left out when nothing is provided)
+has_assessment <- !is.null(params$assessment)
+p_assessment_iterations <- NULL
+p_assessment_estimates  <- NULL
 ```
 
 ```{r load-functions}
@@ -92,6 +97,18 @@ library(ggplot2)
 library(stringr)
 library(kableExtra)
 
+```
+
+```{r run-config-table, echo=FALSE}
+tibble(
+  Setting = c("Model", "Model folder", "Saved outputs", "Output folder", "File prefix", "Convergence assessment"),
+  Value   = c(model_name, model_dir, ifelse(SAVE_OUTPUTS, "yes", "no (knitted report only)"),
+              ifelse(SAVE_OUTPUTS, output_dir, "-"), ifelse(SAVE_OUTPUTS, prefix, "-"),
+              ifelse(has_assessment, "provided", "not provided"))
+) |>
+  kable(booktabs = TRUE, caption = "Run configuration") |>
+  kable_styling(full_width = FALSE, font_size = 12, bootstrap_options = c("striped", "hover")) |>
+  column_spec(1, bold = TRUE)
 ```
 
 ```{r check-chartsdata}
@@ -144,7 +161,7 @@ t_param_table
 
 ```{r fisher-matrix, fig.height=6}
 p_fisher <- safe_run(plot_fisher_matrix(model_summary), "Fisher information matrix")
-p_fisher
+show_if(p_fisher)
 ```
 
 ## SAEM convergence 
@@ -152,6 +169,17 @@ p_fisher
 ```{r convergence, fig.height=conv_height}
 p_convergence <- plot_convergence(model_dir)
 p_convergence
+```
+
+```{r convergence-assessment, results="asis", echo=FALSE, eval=has_assessment, fig.height=5}
+# Optional: only shown when `assessment` is provided (see the YAML above)
+cat("## Convergence assessment\n\n")
+cat("SAEM was run several times from different initial values: the curves of the runs should end on the same values.\n\n")
+p_assessment_iterations <- safe_run(plot_convergence_assessment(params$assessment, which = "iterations"), "Convergence assessment (iterations)")
+if (!is.null(p_assessment_iterations)) print(p_assessment_iterations)
+cat("\n\n")
+p_assessment_estimates <- safe_run(plot_convergence_assessment(params$assessment, which = "estimates"), "Convergence assessment (final estimates)")
+if (!is.null(p_assessment_estimates)) print(p_assessment_estimates)
 ```
 
 ## Individual parameter distributions (shrinkage) 
@@ -167,7 +195,7 @@ Random-effect x covariate correlation (covariate search) -- the heatmap below an
 
 ```{r covariate-search-plot, fig.height=5, fig.width=10}
 p_covariate_search <- safe_run(plot_covariate_search(model_dir), "Covariate search heatmap")
-p_covariate_search
+show_if(p_covariate_search)
 ```
 
 ```{r covariate-search-table}
@@ -179,10 +207,10 @@ Confirmation tests for covariate effects already in the model (correlation test 
 
 ```{r covariate-confirmation-tables}
 t_covariate_confirmation <- safe_run(covariate_tests_table(model_dir, which = "confirmation"), "Covariate confirmation table")
-t_covariate_confirmation
+show_if(t_covariate_confirmation)
 
 t_covariate_wald <- safe_run(covariate_tests_table(model_dir, which = "wald"), "Covariate Wald test table")
-t_covariate_wald
+show_if(t_covariate_wald)
 ```
 
 # Predictive performance 
@@ -294,10 +322,10 @@ if (!is.null(covariate_effects_res)) {
   covfx_height <- min(14, max(6, 4 * ceiling(length(covariate_effects_res$plots_flat) / 3)))
 }
 
-t_covariate_effects
+show_if(t_covariate_effects)
 ```
 
-```{r covariate-effects-plot, fig.height=covfx_height}
+```{r covariate-effects-plot, fig.height=covfx_height, eval=!is.null(p_covariate_effects_combined)}
 p_covariate_effects_combined
 ```
 
@@ -314,6 +342,8 @@ save_plot <- function(plot, suffix, width = 8, height = 6) {
 
 save_plot(p_fisher, "fisher_matrix")
 save_plot(p_convergence, "convergence", height = conv_height)
+save_plot(p_assessment_iterations, "convergence_assessment_iterations", height = 5)
+save_plot(p_assessment_estimates, "convergence_assessment_estimates", height = 5)
 save_plot(p_iparam_distributions, "iparam_distributions", height = iparam_height)
 save_plot(p_covariate_search, "covariate_search", height = 5)
 save_plot(p_obspred, "obspred", height = 8)

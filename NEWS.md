@@ -4,6 +4,20 @@ First assembly of the package from three scripts (engine, readers/diagnostics, f
 
 ## New
 
+* `compare_two_models()` now returns a list like `compare_models()`: `data` (the tibble it used to
+  return) and `kable` (a ready-made table). Both accept `bold_above = c(rse_pct = 30)` to print the
+  values above a threshold in bold.
+* `compare_obspred_metrics()` accepts model folders and `read_summary()` objects (`read_summary()`
+  now keeps `summary_path`), and explains what it cannot use.
+* `backward_monitor()`: a ready-made `diagnostic_fun` for `backward_elimination()` (relations, OFV,
+  BICc and its change, largest eta-shrinkage).
+* Convergence assessment: `tidy_convergence_assessment()`, `plot_convergence_assessment()` and an
+  optional section of the check-up report (`run_diagnostics(assessment = )`).
+* The check-up report shows its run configuration as a table and no longer prints `NULL` for
+  analyses that were not run; the comparison report fixes its metrics table.
+* `tests/testthat/test-templates.R` renders both reports end to end when a model with ChartsData is
+  placed in `tests/testthat/fixtures/warfarin_final/` (skipped otherwise).
+
 * `run_comparison()` and the `model_comparison` report template: two models side by side
   (information criteria and parameters in common tables; prediction-error metrics,
   observations vs predictions, VPC and NPDE as paired plots).

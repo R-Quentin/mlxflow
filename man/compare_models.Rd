@@ -4,7 +4,7 @@
 \alias{compare_models}
 \title{Compare the parameters of all the models of a folder}
 \usage{
-compare_models(dir, values = "estimate", clean = TRUE)
+compare_models(dir, values = "estimate", clean = TRUE, bold_above = NULL)
 }
 \arguments{
 \item{dir}{Folder holding one sub-folder per model.}
@@ -16,6 +16,11 @@ standard-error columns.}
 
 \item{clean}{If TRUE (default), covariate labels are simplified
 (`beta_Cl_WT` becomes `~WT`).}
+
+\item{bold_above}{Optional named numeric vector: values above the threshold are
+printed in bold in the table, e.g. `c(rse_pct = 30)`. With one value the name must
+be that value (`values = "rse_pct"`); with several, the columns of that value are
+highlighted. Only the table is affected, not `data`.}
 }
 \value{
 A list with `data` (the joined tibble) and `kable` (the formatted table).

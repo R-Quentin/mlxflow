@@ -12,7 +12,7 @@ read_summary(file, full = FALSE)
 \item{full}{if TRUE, parse all estimation sections (slower for batch use)}
 }
 \value{
-named list: $model_name    character(1) $criteria      tibble  [criterion, value] $ll_method     "is" (importance sampling), "lin" (linearization), ... or NA $covariates    character vector of active covariate relations $dataset_info  tibble  [info, value] $pop_params    tibble or NULL $indiv_params  tibble or NULL $fisher_matrix data.frame (symmetric) or NULL $eigen_values  tibble or NULL
+named list: $model_name    character(1) $summary_path  path of the summary.txt that was read $criteria      tibble  [criterion, value] $ll_method     "is" (importance sampling), "lin" (linearization), ... or NA $covariates    character vector of active covariate relations $dataset_info  tibble  [info, value] $pop_params    tibble or NULL $indiv_params  tibble or NULL $fisher_matrix data.frame (symmetric) or NULL $eigen_values  tibble or NULL
 }
 \description{
 - Model name

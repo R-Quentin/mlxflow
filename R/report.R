@@ -20,6 +20,10 @@
 #' @param save_output If TRUE, also save plots and tables in `output_dir`.
 #' @param output_dir Folder of the saved plots and tables (default: `model_dir`).
 #' @param prefix Prefix of the saved plots and tables (default: the model folder name).
+#' @param assessment Optional convergence assessment, shown as an extra section: the
+#'   object returned by `lixoftConnectors::getAssessmentResults()`, or the path of an
+#'   .rds file holding it. `NULL` (default) leaves the section out. See
+#'   [plot_convergence_assessment()].
 #'
 #' @return The path of the html report, invisibly.
 #' @export
@@ -29,7 +33,8 @@ run_diagnostics <- function(model_dir,
                             knit_prefix = NULL,
                             save_output = FALSE,
                             output_dir  = "",
-                            prefix      = "") {
+                            prefix      = "",
+                            assessment  = NULL) {
 
   if (!dir.exists(model_dir)) stop("model_dir not found: ", model_dir, call. = FALSE)
   template <- .find_template(workflow)
@@ -46,13 +51,17 @@ run_diagnostics <- function(model_dir,
     knit_prefix <- if (nzchar(prefix)) prefix else model_name
   }
 
+  params <- list(model_dir   = model_dir,
+                 save_output = save_output,
+                 output_dir  = if (is.null(output_dir)) "" else output_dir,
+                 prefix      = prefix)
+  # Only passed when given: a custom template that does not declare it keeps working
+  if (!is.null(assessment)) params$assessment <- assessment
+
   .render_report(template,
                  output_file = paste0(knit_prefix, "_", template$name, ".html"),
                  knit_dir    = knit_dir,
-                 params = list(model_dir   = model_dir,
-                               save_output = save_output,
-                               output_dir  = if (is.null(output_dir)) "" else output_dir,
-                               prefix      = prefix))
+                 params      = params)
 }
 
 
@@ -105,6 +114,7 @@ run_comparison <- function(model_dir_1, model_dir_2,
   model_dir_2 <- normalizePath(model_dir_2, winslash = "/")
   if (is.null(label_1)) label_1 <- basename(model_dir_1)
   if (is.null(label_2)) label_2 <- basename(model_dir_2)
+  if (identical(label_1, label_2)) { label_1 <- paste0(label_1, " (1)"); label_2 <- paste0(label_2, " (2)") }
   stem <- paste0(label_1, "_vs_", label_2)
 
   if (is.null(knit_prefix) || !nzchar(knit_prefix)) knit_prefix <- if (nzchar(prefix)) prefix else stem

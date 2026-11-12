@@ -11,7 +11,8 @@ run_diagnostics(
   knit_prefix = NULL,
   save_output = FALSE,
   output_dir = "",
-  prefix = ""
+  prefix = "",
+  assessment = NULL
 )
 }
 \arguments{
@@ -32,6 +33,11 @@ given, otherwise the model folder name).}
 \item{output_dir}{Folder of the saved plots and tables (default: `model_dir`).}
 
 \item{prefix}{Prefix of the saved plots and tables (default: the model folder name).}
+
+\item{assessment}{Optional convergence assessment, shown as an extra section: the
+object returned by `lixoftConnectors::getAssessmentResults()`, or the path of an
+.rds file holding it. `NULL` (default) leaves the section out. See
+[plot_convergence_assessment()].}
 }
 \value{
 The path of the html report, invisibly.

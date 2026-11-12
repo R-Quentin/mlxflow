@@ -4,7 +4,13 @@
 \alias{compare_two_models}
 \title{Compare the parameters of two models side by side}
 \usage{
-compare_two_models(first, second, values = "estimate", clean = TRUE)
+compare_two_models(
+  first,
+  second,
+  values = "estimate",
+  clean = TRUE,
+  bold_above = NULL
+)
 }
 \arguments{
 \item{first, second}{The two models: the output of `read_summary(file, full = TRUE)`,
@@ -16,13 +22,19 @@ standard-error columns.}
 
 \item{clean}{If TRUE (default), covariate labels are simplified
 (`beta_Cl_WT` becomes `~WT`).}
+
+\item{bold_above}{Optional named numeric vector: values of a column above the
+given threshold are printed in bold in the table, e.g. `c(rse_pct = 30)`
+highlights the relative standard errors above 30 percent for both models.
+Only the table is affected, not `data`.}
 }
 \value{
-A tibble: `type`, `parameter`, then for each value the columns
-  `<value>_1`, `<value>_2`, `delta_<value>` and `delta_rel_<value>`.
+A list with `data` (tibble: `type`, `parameter`, then for each value the
+  columns `<value>_1`, `<value>_2`, `delta_<value>` and `delta_rel_<value>`) and
+  `kable` (the formatted table, a kableExtra object you can keep styling).
 }
 \description{
 Joins the parameter tables of two models, keeping the native Monolix row
-order, and adds the difference (`second - first`) and the relative
-difference for each requested column.
+order, adds the difference (`second - first`) and the relative difference
+for each requested column, and builds a ready-to-print table.
 }

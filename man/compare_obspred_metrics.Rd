@@ -7,8 +7,9 @@
 compare_obspred_metrics(first, second, labels = c("Model 1", "Model 2"))
 }
 \arguments{
-\item{first, second}{The two models: the output of [obspred_diagnostics()] or
-its `metrics` table.}
+\item{first, second}{The two models, given as: a model folder (its ChartsData is
+read), the output of `read_summary()` (the folder of the summary is used), the
+output of [obspred_diagnostics()], or its `metrics` table.}
 
 \item{labels}{Names of the two models used as column names.}
 }

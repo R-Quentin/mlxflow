@@ -118,8 +118,8 @@
 #' Compare the parameters of two models side by side
 #'
 #' Joins the parameter tables of two models, keeping the native Monolix row
-#' order, and adds the difference (`second - first`) and the relative
-#' difference for each requested column.
+#' order, adds the difference (`second - first`) and the relative difference
+#' for each requested column, and builds a ready-to-print table.
 #'
 #' @param first,second The two models: the output of `read_summary(file, full = TRUE)`,
 #'   a summary.txt path, or a model folder.
@@ -128,11 +128,16 @@
 #'   standard-error columns.
 #' @param clean If TRUE (default), covariate labels are simplified
 #'   (`beta_Cl_WT` becomes `~WT`).
+#' @param bold_above Optional named numeric vector: values of a column above the
+#'   given threshold are printed in bold in the table, e.g. `c(rse_pct = 30)`
+#'   highlights the relative standard errors above 30 percent for both models.
+#'   Only the table is affected, not `data`.
 #'
-#' @return A tibble: `type`, `parameter`, then for each value the columns
-#'   `<value>_1`, `<value>_2`, `delta_<value>` and `delta_rel_<value>`.
+#' @return A list with `data` (tibble: `type`, `parameter`, then for each value the
+#'   columns `<value>_1`, `<value>_2`, `delta_<value>` and `delta_rel_<value>`) and
+#'   `kable` (the formatted table, a kableExtra object you can keep styling).
 #' @export
-compare_two_models <- function(first, second, values = "estimate", clean = TRUE) {
+compare_two_models <- function(first, second, values = "estimate", clean = TRUE, bold_above = NULL) {
   first  <- .as_summary(first)
   second <- .as_summary(second)
 
@@ -171,7 +176,32 @@ compare_two_models <- function(first, second, values = "estimate", clean = TRUE)
 
   # Labels are cleaned LAST: matching is done on the raw parameter names
   if (clean) compared_tbl <- clean_param_labels(compared_tbl, overwrite = TRUE)
-  compared_tbl
+
+  # Table: one block of four columns per value, models marked 1 and 2 (names in the footnote)
+  value_label <- function(v) switch(v, estimate = "Estimate", rse_pct = "RSE (%)", v)
+  col_names <- c("Parameter", unlist(lapply(values, function(v)
+    c(paste0(value_label(v), "\u00b9"), paste0(value_label(v), "\u00b2"), "\u0394", "Relative \u0394"))))
+  shown <- compared_tbl |>
+    dplyr::select(-type) |>
+    dplyr::mutate(dplyr::across(dplyr::everything(),
+                                \(x) ifelse(is.na(x) | x == "NA", "\u2014", as.character(x))))
+  kable_obj <- shown |>
+    knitr::kable(booktabs = TRUE, col.names = col_names, caption = "Parameter changes") |>
+    auto_pack_rows(compared_tbl, "type") |>
+    kableExtra::footnote(number = c(first$model_name, second$model_name)) |>
+    kableExtra::kable_styling(full_width = FALSE, font_size = 11, bootstrap_options = c("striped", "bordered", "hover"))
+
+  # Optional highlighting, e.g. bold_above = c(rse_pct = 30)
+  for (v in intersect(names(bold_above), values)) {
+    for (suffix in c("_1", "_2")) {
+      col <- paste0(v, suffix)
+      flag <- suppressWarnings(as.numeric(compared_tbl[[col]])) > bold_above[[v]]
+      kable_obj <- kableExtra::column_spec(kable_obj, which(names(compared_tbl) == col) - 1,
+                                           bold = !is.na(flag) & flag)
+    }
+  }
+
+  list(data = compared_tbl, kable = kable_obj)
 }
 
 
@@ -189,10 +219,14 @@ compare_two_models <- function(first, second, values = "estimate", clean = TRUE)
 #'   standard-error columns.
 #' @param clean If TRUE (default), covariate labels are simplified
 #'   (`beta_Cl_WT` becomes `~WT`).
+#' @param bold_above Optional named numeric vector: values above the threshold are
+#'   printed in bold in the table, e.g. `c(rse_pct = 30)`. With one value the name must
+#'   be that value (`values = "rse_pct"`); with several, the columns of that value are
+#'   highlighted. Only the table is affected, not `data`.
 #'
 #' @return A list with `data` (the joined tibble) and `kable` (the formatted table).
 #' @export
-compare_models <- function(dir, values = "estimate", clean = TRUE) {
+compare_models <- function(dir, values = "estimate", clean = TRUE, bold_above = NULL) {
   summary_files <- find_summary_files(dir)
   single <- length(values) == 1
 
@@ -220,6 +254,7 @@ compare_models <- function(dir, values = "estimate", clean = TRUE) {
 
   # Formatted table
   model_names <- setdiff(names(final_comp_table), c("type", "parameter"))
+  kable_obj_data <- dplyr::select(final_comp_table, -type)    # displayed columns (after Parameter), to locate the highlighted ones
   kable_obj <- final_comp_table |>
     dplyr::select(-type) |>
     dplyr::mutate(dplyr::across(dplyr::everything(),
@@ -242,6 +277,16 @@ compare_models <- function(dir, values = "estimate", clean = TRUE) {
       kableExtra::kable_styling(full_width = FALSE, font_size = 9, bootstrap_options = c("striped", "hover"))
   }
   kable_obj <- kableExtra::column_spec(kable_obj, 1, bold = TRUE)
+
+  # Optional highlighting, e.g. bold_above = c(rse_pct = 30)
+  for (v in intersect(names(bold_above), values)) {
+    cols <- if (single) model_names else model_names[endsWith(model_names, paste0("_", v))]
+    for (col in cols) {
+      flag <- suppressWarnings(as.numeric(final_comp_table[[col]])) > bold_above[[v]]
+      kable_obj <- kableExtra::column_spec(kable_obj, which(names(kable_obj_data) == col),
+                                           bold = !is.na(flag) & flag)
+    }
+  }
 
   list(data = final_comp_table, kable = kable_obj)
 }
@@ -290,8 +335,9 @@ compare_criteria <- function(first, second, labels = NULL) {
 #' individual) and observed variable, one column per model and the difference
 #' `second - first`.
 #'
-#' @param first,second The two models: the output of [obspred_diagnostics()] or
-#'   its `metrics` table.
+#' @param first,second The two models, given as: a model folder (its ChartsData is
+#'   read), the output of `read_summary()` (the folder of the summary is used), the
+#'   output of [obspred_diagnostics()], or its `metrics` table.
 #' @param labels Names of the two models used as column names.
 #'
 #' @return A tibble: the identifying columns (`Y_TYPE` when present,
@@ -299,7 +345,7 @@ compare_criteria <- function(first, second, labels = NULL) {
 #' @export
 compare_obspred_metrics <- function(first, second, labels = c("Model 1", "Model 2")) {
   as_long <- function(x, label) {
-    m <- if (is.data.frame(x)) x else x$metrics
+    m <- .as_metrics(x)
     keys <- intersect(c("DV", "Y_TYPE", "Prediction"), names(m))
     metrics <- setdiff(names(m), c(keys, "ipred_type"))
     m |>
@@ -318,4 +364,23 @@ compare_obspred_metrics <- function(first, second, labels = c("Model 1", "Model 
   for (k in c(keys, "metric")) out[[k]] <- as.character(out[[k]])
   out$delta  <- round(out[[labels[2]]] - out[[labels[1]]], 4)
   out
+}
+
+
+# Metrics table of one model, whatever the way it is given: a metrics table, the output of
+# obspred_diagnostics(), a read_summary() object, or a model folder (ChartsData must exist there)
+#' @noRd
+.as_metrics <- function(x) {
+  if (is.data.frame(x)) return(x)
+  if (is.list(x) && is.data.frame(x$metrics)) return(x$metrics)
+  dir <- if (is.character(x) && length(x) == 1) x
+         else if (is.list(x) && !is.null(x$summary_path)) dirname(x$summary_path)
+  if (is.null(dir)) {
+    stop("Cannot get the prediction-error metrics from this object: give a model folder, ",
+         "a read_summary() object, the output of obspred_diagnostics() or its `metrics` table.",
+         call. = FALSE)
+  }
+  if (!dir.exists(dir)) stop("Model folder not found: ", dir, call. = FALSE)
+  check_chartsdata(dir)
+  obspred_diagnostics(dir, dv = resolve_dv(dir), split = TRUE)$metrics
 }

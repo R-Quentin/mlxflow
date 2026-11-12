@@ -1,0 +1,2 @@
+parameter,covariate,statistics,p-value,test
+V,beta_V_logtWt,7.41601,2.90347e-08,t-Test

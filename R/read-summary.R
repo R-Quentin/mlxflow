@@ -57,7 +57,7 @@ nums_after_name <- function(line) {
 #' @param file path to the summary.txt file
 #' @param full if TRUE, parse all estimation sections (slower for batch use)
 #'
-#' @return named list: $model_name    character(1) $criteria      tibble  [criterion, value] $ll_method     "is" (importance sampling), "lin" (linearization), ... or NA $covariates    character vector of active covariate relations $dataset_info  tibble  [info, value] $pop_params    tibble or NULL $indiv_params  tibble or NULL $fisher_matrix data.frame (symmetric) or NULL $eigen_values  tibble or NULL
+#' @return named list: $model_name    character(1) $summary_path  path of the summary.txt that was read $criteria      tibble  [criterion, value] $ll_method     "is" (importance sampling), "lin" (linearization), ... or NA $covariates    character vector of active covariate relations $dataset_info  tibble  [info, value] $pop_params    tibble or NULL $indiv_params  tibble or NULL $fisher_matrix data.frame (symmetric) or NULL $eigen_values  tibble or NULL
 #'
 #' @export
 read_summary <- function(file, full = FALSE) {
@@ -139,6 +139,7 @@ read_summary <- function(file, full = FALSE) {
   if (!full) {
     return(list(
       model_name    = model_name,
+      summary_path  = normalizePath(file, winslash = "/", mustWork = FALSE),
       criteria      = criteria,
       ll_method     = ll_method,
       covariates    = covariates,
@@ -326,6 +327,7 @@ read_summary <- function(file, full = FALSE) {
   # --- Return ---
   list(
     model_name    = model_name,
+    summary_path  = normalizePath(file, winslash = "/", mustWork = FALSE),
     criteria      = criteria,
     ll_method     = ll_method,
     covariates    = covariates,
