@@ -24,6 +24,16 @@ sex = {type=categorical, categories={'0', '1'}}
 EQUATION:
 logtWt = log(wt/70)
 
+DEFINITION:
+tSEX =
+{
+  transform = sex, 
+  categories = {
+  'G_0' = {'0'},
+  'G_1' = {'1'}  }, 
+  reference = 'G_0'
+}
+
 [INDIVIDUAL]
 input = {Tlag_pop, omega_Tlag, ka_pop, omega_ka, V_pop, omega_V, Cl_pop, omega_Cl, logtWt, beta_V_logtWt}
 

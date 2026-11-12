@@ -1,6 +1,6 @@
 ********************************************************************************
 *                        warfarin_final.mlxtran                                *
-*                        November 05, 2026 at 17:05:41                         *
+*                        November 12, 2026 at 13:54:51                         *
 *                        Monolix version : 2024R1                              *
 ********************************************************************************
 
@@ -24,7 +24,7 @@ Error Model Parameters -------------------
 a             :                      0.243    0.0375      15.5      0.18     0.327
 b             :                     0.0516   0.00764      14.8    0.0388    0.0687
 
-Elapsed time (seconds):      2.5
+Elapsed time (seconds):      1.4
 Exploratory phase iterations:      224 (Autostop)
 Smoothing phase iterations:        103 (Autostop)
 
@@ -42,7 +42,7 @@ ka   :         0.308          2.17          2.58          2.92          5.86    
 V    :          5.02          7.06          8.05          8.88          13.1          10.8
 Cl   :         0.072         0.108         0.127         0.164         0.286       -0.0712
 
-Elapsed time (seconds):      0.5
+Elapsed time (seconds):     0.28
 Iterations:       81 (Autostop)
 
  -------------------------------------------------------------------------------
@@ -72,7 +72,7 @@ beta_V_logtWt-0.0089253 -0.016995   0.11092         1
                                min       max   max/min
 Eigen values           :      0.25       1.8         7
 
-Elapsed time (seconds):     0.25
+Elapsed time (seconds):     0.22
 Iterations:       50 (Autostop)
 
  -------------------------------------------------------------------------------
@@ -89,8 +89,8 @@ Akaike Information Criteria               (AIC) :         653.10
 Corrected Bayesian Information Criteria  (BICc) :         681.48
 Bayesian Information Criteria             (BIC) :         669.22
 
-Elapsed time                          (seconds) :           3.23
-CPU time                              (seconds) :           3.00
+Elapsed time                          (seconds) :           1.77
+CPU time                              (seconds) :           1.00
 MonteCarlo size (is):    10000 (Fixed number of iterations)
 
 
