@@ -53,7 +53,7 @@ library(kableExtra)
 library(patchwork)
 ```
 
-# Run configuration
+# Run configuration 
 
 ```{r run-config}
 model_dir_1 <- normalizePath(params$model_dir_1, winslash = "/", mustWork = TRUE)
@@ -81,10 +81,19 @@ save_table <- function(tbl, suffix) {
   }
   invisible(tbl)
 }
+```
 
-cat("Model 1:", label_1, "->", model_dir_1, "\n")
-cat("Model 2:", label_2, "->", model_dir_2, "\n")
-cat("Saving outputs:", SAVE_OUTPUTS, if (SAVE_OUTPUTS) paste("->", output_dir), "\n")
+```{r run-config-table, echo=FALSE}
+tibble(
+  Setting = c("Model 1", "Model 2", "Saving outputs", "Output folder"),
+  Value   = c(paste0(label_1, ": ", model_dir_1),
+              paste0(label_2, ": ", model_dir_2),
+              SAVE_OUTPUTS, 
+              ifelse(SAVE_OUTPUTS, "yes", "no (knitted report only)"))
+) |>
+  kable(booktabs = TRUE, caption = "Run configuration") |>
+  kable_styling(full_width = FALSE, font_size = 12, bootstrap_options = c("striped", "hover")) |>
+  column_spec(1, bold = TRUE)
 ```
 
 ```{r read-models}
@@ -101,7 +110,7 @@ if (!all(has_charts)) {
 both_charts <- all(has_charts)
 ```
 
-# Models
+# Models 
 
 ```{r models-overview}
 info_value <- function(s, what) {
@@ -121,7 +130,7 @@ overview |>
   kable_styling(full_width = FALSE, font_size = 12, bootstrap_options = c("striped", "hover"))
 ```
 
-# Information criteria
+# Information criteria 
 
 OFV, AIC and BIC are only comparable when the log-likelihood of both models was computed the same way.
 
@@ -140,7 +149,7 @@ save_table(t_criteria, "criteria")
 t_criteria
 ```
 
-# Parameters
+# Parameters 
 
 Parameters are matched by name: a parameter present in one model only (e.g. a covariate effect) shows a dash for the other.
 
@@ -167,7 +176,7 @@ save_table(t_params, "parameters")
 t_params
 ```
 
-# Predictive performance
+# Predictive performance 
 
 Both models are shown with their own axes: compare the shapes and the spread, not the scales.
 
@@ -179,7 +188,7 @@ op2 <- safe_run(obspred_diagnostics(model_dir_2, dv = dv_2, split = TRUE), paste
 have_op <- !is.null(op1) && !is.null(op2)
 ```
 
-## Prediction-error metrics
+## Prediction-error metrics 
 
 ```{r metrics, eval=both_charts}
 t_metrics <- NULL
@@ -198,7 +207,7 @@ if (have_op) {
 show_if(t_metrics)
 ```
 
-## Observations vs predictions
+## Observations vs predictions 
 
 ```{r obspred-plot, eval=both_charts, fig.height=5.5}
 p_obspred <- NULL
@@ -209,7 +218,7 @@ if (have_op) {
 show_if(p_obspred)
 ```
 
-## Absolute individual prediction error
+## Absolute individual prediction error 
 
 ```{r aipe-plot, eval=both_charts}
 p_aipe <- NULL
@@ -220,7 +229,7 @@ if (have_op) {
 show_if(p_aipe)
 ```
 
-## Visual predictive check
+## Visual predictive check 
 
 ```{r vpc, eval=both_charts, fig.height=8}
 v1 <- safe_run(plot_vpc(model_dir_1, dv = dv_1, facet_scales = "free", show_observations = TRUE), paste("VPC -", label_1))
@@ -233,7 +242,7 @@ if (!is.null(v1) && !is.null(v2)) {
 show_if(p_vpc)
 ```
 
-## NPDE
+## NPDE 
 
 ```{r npde-time, eval=both_charts}
 n1 <- safe_run(plot_npde(model_dir_1, dv = dv_1, type = "time"), paste("NPDE -", label_1))
