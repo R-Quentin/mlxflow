@@ -4,22 +4,56 @@
 \alias{compare_obspred_metrics}
 \title{Compare the prediction-error metrics of two models}
 \usage{
-compare_obspred_metrics(first, second, labels = c("Model 1", "Model 2"))
+compare_obspred_metrics(
+  first,
+  second,
+  labels = c("Model 1", "Model 2"),
+  format = c("wide", "long"),
+  split = TRUE,
+  y_type_labels = NULL,
+  split_labels = NULL
+)
 }
 \arguments{
 \item{first, second}{The two models, given as: a model folder (its ChartsData is
 read), the output of `read_summary()` (the folder of the summary is used), the
 output of [obspred_diagnostics()], or its `metrics` table.}
 
-\item{labels}{Names of the two models used as column names.}
+\item{labels}{Names of the two models used in the table (default `"Model 1"` and
+`"Model 2"`).}
+
+\item{format}{`"wide"` (default): rows are models, columns are metrics. `"long"`:
+one row per metric, one column per model.}
+
+\item{split}{If TRUE (default), keep the strata of the Monolix `split` when both
+models have them: the metrics are then given per stratum. If FALSE, compare the
+metrics of all the observations together.}
+
+\item{y_type_labels, split_labels}{Optional named vectors to rename (and order) the
+observed variables and the strata of the models read from a folder, so that the
+names of the two models agree, e.g. `y_type_labels = c(y1 = "Assay A")`. See
+[read_obspred()].}
 }
 \value{
-A tibble: the identifying columns (`Y_TYPE` when present,
-  `Prediction`), `metric`, one column per model and `delta`.
+A tibble. Wide: the identifying columns (`DV`, `Y_TYPE`, `split` and
+  `Prediction`, when present), `Model` (the two labels, then `"delta"`), then one column
+  per metric (`N`, `MPE`, ...). Long: the identifying columns, `metric`, one column
+  per model and `delta`. The order of the first model is kept.
 }
 \description{
 Puts the metrics of [obspred_diagnostics()] (MPE, RMSE, MAE, F20, ...) of
-two models in one table: one row per metric, prediction type (population,
-individual) and observed variable, one column per model and the difference
-`second - first`.
+two models in one table, with the difference `second - first`.
+}
+\details{
+By default (`format = "wide"`) there is one block per observed variable, stratum
+and prediction type, with three rows (the two models and `"delta"`) and one column
+per metric, which reads like a published performance table. `format = "long"`
+gives one row per metric instead, and one column per model.
+
+Observed variables and strata are matched by name. When the two models do not
+name their observed variable the same way but each has only one, they are matched
+anyway (a message tells so). When only one of the models has strata (the `split`
+of the Monolix plots), both are compared overall, which needs the model folders (or
+the output of [obspred_diagnostics()]) to recompute the metrics; a metrics table
+cannot be pooled and an error explains what to give instead.
 }

@@ -152,26 +152,12 @@ t_criteria
 # Parameters 
 
 Parameters are matched by name: a parameter present in one model only (e.g. a covariate effect) shows a dash for the other.
+RSE and shrinkage are highlighted like in the model report (bold and coloured above the usual thresholds), for each model.
 
 ```{r parameters}
-cmp <- compare_two_models(s1, s2, values = c("estimate", "rse_pct"), clean = TRUE)$data
+cmp <- compare_two_models(s1, s2, values = c("estimate", "rse_pct", "shrinkage"), clean = TRUE)$data
 
-fmt <- function(x) ifelse(is.na(x), "\u2014", as.character(signif(as.numeric(x), 3)))
-disp <- cmp |>
-  transmute(type, parameter,
-            est_1 = fmt(estimate_1), est_2 = fmt(estimate_2),
-            change = ifelse(is.na(delta_rel_estimate) | delta_rel_estimate == "NA", "\u2014", delta_rel_estimate),
-            rse_1 = fmt(rse_pct_1), rse_2 = fmt(rse_pct_2))
-
-t_params <- disp |>
-  select(-type) |>
-  kable(booktabs = TRUE, escape = FALSE,
-        col.names = c("Parameter", label_1, label_2, "Change", label_1, label_2),
-        caption = "Parameter estimates and relative standard errors") |>
-  add_header_above(c(" " = 1, "Estimate" = 2, " " = 1, "RSE (%)" = 2)) |>
-  auto_pack_rows(disp, "type") |>
-  kable_styling(full_width = FALSE, font_size = 11, bootstrap_options = c("striped", "hover")) |>
-  column_spec(1, bold = TRUE)
+t_params <- kable_param_comparison(cmp, labels = labels)
 save_table(t_params, "parameters")
 t_params
 ```
@@ -194,12 +180,17 @@ have_op <- !is.null(op1) && !is.null(op2)
 t_metrics <- NULL
 if (have_op) {
   metrics_cmp <- compare_obspred_metrics(op1, op2, labels = labels)
-  # Group by observed variable only when there are several
-  groups <- c(if (n_distinct(metrics_cmp$Y_TYPE) > 1) "Y_TYPE", "Prediction")
-  t_metrics <- metrics_cmp |>
-    select(metric, all_of(labels), delta) |>
-    kable(booktabs = TRUE, caption = sprintf("Prediction-error metrics (change = %s - %s)", label_2, label_1),
-          col.names = c("Metric", label_1, label_2, "Change")) |>
+
+  # One block per observed variable and / or stratum when there are several, then per prediction type
+  varying <- intersect(c("Y_TYPE", "split"), names(metrics_cmp))
+  varying <- varying[vapply(varying, function(k) n_distinct(metrics_cmp[[k]]) > 1, logical(1))]
+  metrics_cmp$group <- if (length(varying) > 0) do.call(paste, c(metrics_cmp[varying], sep = " / ")) else ""
+  groups <- c(if (length(varying) > 0) "group", "Prediction")
+
+  metrics_display <- metrics_cmp |> select(-any_of(c("DV", "Y_TYPE", "split", "group", "Prediction")))
+  t_metrics <- metrics_display |>
+    kable(booktabs = TRUE, caption = sprintf("Prediction-error metrics (delta = %s - %s)", label_2, label_1)) |>
+    row_spec(which(metrics_cmp$Model == "delta"), bold = TRUE) |>
     auto_pack_rows(metrics_cmp, groups) |>
     kable_styling(full_width = FALSE, font_size = 12, bootstrap_options = c("striped", "bordered", "hover"))
   save_table(t_metrics, "metrics")

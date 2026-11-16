@@ -122,6 +122,46 @@ clean_param_labels <- function(tbl,
   
   tbl
 }
+#' Colour and weight of RSE values by threshold (shared by the parameter tables)
+#'
+#' Fixed effects and random effects have their own medium / low thresholds; anything
+#' above `high` is flagged whatever the type. Values are made numeric first, so this
+#' also works on a column that was already converted.
+#' @return list(color, bold): vectors as long as `rse`
+#' @noRd
+.rse_style <- function(rse, type, thresholds, colors, default_color = "black") {
+  rse_num <- as.numeric(rse)
+  list(
+    color = case_when(
+      rse_num > thresholds$high ~ colors$high,
+      type == "Fixed Effects" & rse_num > thresholds$fe_med  ~ colors$med,
+      type == "Fixed Effects" & rse_num > thresholds$fe_low  ~ colors$low,
+      type == "Standard Deviation of the Random Effects" & rse_num > thresholds$re_med ~ colors$med,
+      type == "Standard Deviation of the Random Effects" & rse_num > thresholds$re_low ~ colors$low,
+      TRUE ~ default_color
+    ),
+    bold = case_when(
+      type == "Fixed Effects" & rse_num > thresholds$fe_low ~ TRUE,
+      type == "Standard Deviation of the Random Effects" & rse_num > thresholds$re_low ~ TRUE,
+      TRUE ~ FALSE
+    )
+  )
+}
+#' Colour and weight of shrinkage values by threshold (shared by the parameter tables)
+#' @return list(color, bold): vectors as long as `shrinkage`
+#' @noRd
+.shrink_style <- function(shrinkage, thresholds, colors, default_color = "black") {
+  shrink_num <- as.numeric(shrinkage)
+  list(
+    color = case_when(
+      shrink_num > thresholds$high ~ colors$high,
+      shrink_num > thresholds$med  ~ colors$med,
+      shrink_num > thresholds$low  ~ colors$low,
+      TRUE ~ default_color
+    ),
+    bold = !is.na(shrink_num) & shrink_num > thresholds$low
+  )
+}
 #' Custom kable styling function for param_table, with RSE and Shrinkage highlightinf depending on threshold
 #'
 #' @param data dataframe (kbl_obj from build_param_table)
@@ -153,38 +193,17 @@ kable_param_table <- function(
   rse_colors <- NULL
   rse_bold   <- NULL
   if ("rse_pct" %in% names(data)) {
-    # Ensure it's numeric just in case it was converted outside
-    rse_num <- as.numeric(data$rse_pct) 
-    
-    rse_colors <- case_when(
-      rse_num > rse_thresholds$high ~ thresholds_colors$high,
-      data$type == "Fixed Effects" & rse_num > rse_thresholds$fe_med  ~ thresholds_colors$med,
-      data$type == "Fixed Effects" & rse_num > rse_thresholds$fe_low  ~ thresholds_colors$low,
-      data$type == "Standard Deviation of the Random Effects" & rse_num > rse_thresholds$re_med ~ thresholds_colors$med,
-      data$type == "Standard Deviation of the Random Effects" & rse_num > rse_thresholds$re_low ~ thresholds_colors$low,
-      TRUE ~ default_color
-    )
-    
-    rse_bold <- case_when(
-      data$type == "Fixed Effects" & rse_num > rse_thresholds$fe_low ~ TRUE,
-      data$type == "Standard Deviation of the Random Effects" & rse_num > rse_thresholds$re_low ~ TRUE,
-      TRUE ~ FALSE
-    )
+    rse_style  <- .rse_style(data$rse_pct, data$type, rse_thresholds, thresholds_colors, default_color)
+    rse_colors <- rse_style$color
+    rse_bold   <- rse_style$bold
   }
   
   shrink_colors <- NULL
   shrink_bold   <- NULL
   if ("shrinkage" %in% names(data)) {
-    shrink_num <- as.numeric(data$shrinkage)
-    
-    shrink_colors <- case_when(
-      shrink_num > shrink_thresholds$high ~ thresholds_colors$high,
-      shrink_num > shrink_thresholds$med  ~ thresholds_colors$med,
-      shrink_num > shrink_thresholds$low  ~ thresholds_colors$low,
-      TRUE ~ default_color
-    )
-    
-    shrink_bold <- !is.na(shrink_num) & shrink_num > shrink_thresholds$low
+    shrink_style  <- .shrink_style(data$shrinkage, shrink_thresholds, thresholds_colors, default_color)
+    shrink_colors <- shrink_style$color
+    shrink_bold   <- shrink_style$bold
   }
   
   # --- 2. Clean up NAs and format strings for display SECOND ---
@@ -223,6 +242,111 @@ kable_param_table <- function(
   }
   
   return(kbl_obj)
+}
+#' Table comparing the parameters of two models: estimates, RSE and shrinkage
+#'
+#' Builds the comparison table of two models from the `data` of [compare_two_models()]:
+#' for each compared value (estimate, RSE, shrinkage) one block with the two models and
+#' their change. RSE and shrinkage are highlighted like in [kable_param_table()]: bold
+#' and coloured above the thresholds, for each model separately. A parameter that exists
+#' in one model only (e.g. a covariate effect) shows a dash for the other.
+#'
+#' @param data The `data` element of `compare_two_models(first, second, values = c("estimate", "rse_pct", "shrinkage"))`.
+#'   Blocks of values that are missing from `data` (or empty in both models, e.g. no standard
+#'   errors) are left out.
+#' @param labels Names of the two models in the column headers.
+#' @param change How the change of each value is shown, `"rel"` (relative, in percent) or
+#'   `"abs"` (absolute difference, in the unit of the value: percentage points for RSE and
+#'   shrinkage). Named by value; default: relative for the estimates, absolute for RSE and
+#'   shrinkage, which are already percentages. The change is always `second - first`.
+#' @param caption Table caption.
+#' @param rse_thresholds,shrink_thresholds,thresholds_colors Thresholds and colours of the
+#'   highlighting, as in [kable_param_table()].
+#'
+#' @return A kableExtra table you can keep styling (`kable_styling()`, `footnote()`, ...).
+#' @examples
+#' \dontrun{
+#' cmp <- compare_two_models("warfarin_example", "warfarin_final",
+#'                           values = c("estimate", "rse_pct", "shrinkage"))
+#' kable_param_comparison(cmp$data, labels = c("Base", "Final"))
+#' }
+#' @export
+kable_param_comparison <- function(
+    data,
+    labels  = c("Model 1", "Model 2"),
+    change  = c(estimate = "rel", rse_pct = "abs", shrinkage = "abs"),
+    caption = "Parameter estimates, relative standard errors and shrinkage",
+    rse_thresholds    = list(high = 100, fe_med = 50, fe_low = 30, re_med = 70, re_low = 50),
+    shrink_thresholds = list(high = 100, med = 60, low = 40),
+    thresholds_colors = list(high = "firebrick", med = "chocolate3", low = "goldenrod3")
+) {
+  stopifnot(is.data.frame(data), all(c("type", "parameter") %in% names(data)), length(labels) == 2)
+  block_titles <- c(estimate = "Estimate", rse_pct = "RSE (%)", shrinkage = "Shrinkage (%)*")
+
+  # Blocks present in the data and not empty in both models
+  blocks <- names(block_titles)[vapply(names(block_titles), function(v) {
+    all(paste0(v, c("_1", "_2")) %in% names(data)) &&
+      any(!is.na(suppressWarnings(as.numeric(c(data[[paste0(v, "_1")]], data[[paste0(v, "_2")]])))))
+  }, logical(1))]
+  if (length(blocks) == 0) {
+    stop("`data` holds none of the compared values: use the `data` of compare_two_models() ",
+         "with values = c(\"estimate\", \"rse_pct\", \"shrinkage\").", call. = FALSE)
+  }
+  change <- change[blocks]
+  change[is.na(change)] <- "rel"
+
+  fmt_value <- function(x, v) {
+    x <- suppressWarnings(as.numeric(x))
+    ifelse(is.na(x), "\u2014", as.character(if (v == "estimate") signif(x, 3) else round(x, 1)))
+  }
+  fmt_change <- function(v) {
+    if (change[[v]] == "rel") {
+      x <- as.character(data[[paste0("delta_rel_", v)]])
+      ifelse(is.na(x) | x == "NA", "\u2014", ifelse(startsWith(x, "-"), x, paste0("+", x)))
+    } else {
+      x <- suppressWarnings(as.numeric(data[[paste0("delta_", v)]]))
+      ifelse(is.na(x), "\u2014", sprintf("%+g", signif(x, 3)))
+    }
+  }
+
+  shown <- tibble::tibble(Parameter = data$parameter)
+  col_of <- list()
+  for (v in blocks) {
+    shown[[paste0(v, "_1")]]      <- fmt_value(data[[paste0(v, "_1")]], v)
+    shown[[paste0(v, "_2")]]      <- fmt_value(data[[paste0(v, "_2")]], v)
+    shown[[paste0(v, "_change")]] <- fmt_change(v)
+  }
+
+  kbl_obj <- shown |>
+    kable(booktabs = TRUE, escape = FALSE,
+          col.names = c("Parameter", rep(c(labels, "Change"), length(blocks))),
+          caption = caption) |>
+    kableExtra::add_header_above(c(" " = 1, stats::setNames(rep(3, length(blocks)), block_titles[blocks]))) |>
+    auto_pack_rows(data, "type") |>
+    column_spec(1, bold = TRUE, width_min = "4cm")
+
+  # Highlighting, per model, from the numeric values
+  for (i in 1:2) {
+    if ("rse_pct" %in% blocks) {
+      st <- .rse_style(data[[paste0("rse_pct_", i)]], data$type, rse_thresholds, thresholds_colors)
+      kbl_obj <- column_spec(kbl_obj, 1 + 3 * (match("rse_pct", blocks) - 1) + i, color = st$color, bold = st$bold)
+    }
+    if ("shrinkage" %in% blocks) {
+      st <- .shrink_style(data[[paste0("shrinkage_", i)]], shrink_thresholds, thresholds_colors)
+      kbl_obj <- column_spec(kbl_obj, 1 + 3 * (match("shrinkage", blocks) - 1) + i, color = st$color, bold = st$bold)
+    }
+  }
+
+  # What "Change" means, and the shrinkage method
+  note <- c(
+    sprintf("Change = %s - %s: %s.", labels[2], labels[1],
+            paste(sprintf("%s %s", tolower(sub(" \\(%\\)\\*?$", "", block_titles[blocks])),
+                          ifelse(change == "rel", "relative", "absolute")), collapse = ", ")),
+    if ("shrinkage" %in% blocks) "*Shrinkage by conditional distribution."
+  )
+  kableExtra::kable_styling(kbl_obj, full_width = FALSE, font_size = 11,
+                            bootstrap_options = c("striped", "hover")) |>
+    kableExtra::footnote(general = note, general_title = "")
 }
 #' /!\\ Deprecated for master function kable_param_table()
 #'

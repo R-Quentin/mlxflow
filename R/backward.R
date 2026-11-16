@@ -34,12 +34,42 @@ capture_mlx <- function(expr, show = c("none", "new")) {
   }
   invisible(value)
 }
-#' .lx("loadProject") without the data set notices Monolix prints at every (re)read
-#' (e.g. "subjects-occasion without observation are removed"). Call
-#' .lx("loadProject") directly if you ever need to see them.
-#' @noRd
-load_project_quiet <- function(path) {
-  capture_mlx(.lx("loadProject", path), show = "none")
+#' Load a Monolix project without the console notices
+#'
+#' Calls `lixoftConnectors::loadProject()` and discards everything Monolix prints
+#' while reading the project (the data set notices such as "subjects-occasion without
+#' observation are removed", or "Results have not been loaded due to an old
+#' inconsistent project"). Handy in scripts where a project is loaded again and again.
+#'
+#' Two safeguards compared with a plain `loadProject()`: the file is checked before
+#' Monolix is called (the error then names the path and the working directory), and
+#' if Monolix itself fails, what it printed is shown together with the error instead
+#' of being lost. The connectors must already be initialized (see [init_monolix()]).
+#'
+#' @param project_path Path of the Monolix project (.mlxtran) to load.
+#'
+#' @return `TRUE`, invisibly.
+#' @examples
+#' \dontrun{
+#' init_monolix("warfarin_final.mlxtran")
+#' load_project_quiet("warfarin_example.mlxtran")
+#' }
+#' @export
+load_project_quiet <- function(project_path) {
+  if (!file.exists(project_path)) {
+    stop("Project file not found: '", project_path, "'.\n",
+         "The working directory is: '", getwd(), "'.\n",
+         "Check the path (an absolute path or file.path() from here is the safest).",
+         call. = FALSE)
+  }
+  tryCatch(
+    capture_mlx(.lx("loadProject", project_path), show = "none"),
+    error = function(e) {
+      stop("Failed to load the Monolix project '", project_path, "'. Details: ",
+           conditionMessage(e), call. = FALSE)
+    }
+  )
+  invisible(TRUE)
 }
 #' Initialize the Lixoft connectors and load a Monolix project.
 #' software_path is only passed on if given - .lx("initializeLixoftConnectors")
@@ -227,13 +257,26 @@ set_covariate_relation <- function(parameter, covariate, included) {
 #' Run SAEM, conditional distribution sampling and log-likelihood estimation
 #' (importance sampling by default), then collect what is needed to compare
 #' two nested models. Engine notices are shown once per backward run.
+#' With a `scenario` (the list given to setScenario(), e.g. from getScenario()),
+#' the tasks it enables are run instead of this fixed chain: faster (no SE, no
+#' plots) or fuller (SE, conditional mode, plots) than the default. The
+#' log-likelihood is read with the method of the scenario (`scenario$linearization`).
 #' @noRd
-run_full_estimation <- function(linearization = FALSE) {
-  capture_mlx({
-    .lx("runPopulationParameterEstimation")
-    .lx("runConditionalDistributionSampling")   # required before importance-sampling LL
-    .lx("runLogLikelihoodEstimation", linearization = linearization)
-  }, show = "new")
+run_full_estimation <- function(linearization = FALSE, scenario = NULL) {
+  if (is.null(scenario)) {
+    capture_mlx({
+      .lx("runPopulationParameterEstimation")
+      .lx("runConditionalDistributionSampling")   # required before importance-sampling LL
+      .lx("runLogLikelihoodEstimation", linearization = linearization)
+    }, show = "new")
+  } else {
+    check_scenario(scenario)
+    linearization <- isTRUE(scenario$linearization)
+    capture_mlx({
+      .lx("setScenario", scenario)
+      .lx("runScenario")
+    }, show = "new")
+  }
 
   ll_all <- .lx("getEstimatedLogLikelihood")
   method <- if (linearization) "linearization" else "importanceSampling"
@@ -244,6 +287,28 @@ run_full_estimation <- function(linearization = FALSE) {
     criteria   = ll_all[[method]],   # named vector: OFV, AIC, BIC, BICc
     n_params   = length(pop_params)  # used to infer LRT degrees of freedom
   )
+}
+#' Is a task enabled in a scenario? (tasks can be a named vector or a named list)
+#' @noRd
+scenario_task <- function(scenario, task) isTRUE(as.logical(unlist(scenario$tasks)[task]))
+#' A scenario must run what the likelihood ratio test needs: stop early, with the
+#' task names, instead of failing on the first getEstimatedLogLikelihood() call
+#' @noRd
+check_scenario <- function(scenario) {
+  if (!is.list(scenario) || is.null(scenario$tasks)) {
+    stop("`scenario` must be a list with a `tasks` element, like the output of ",
+         "lixoftConnectors::getScenario().", call. = FALSE)
+  }
+  needed <- c("populationParameterEstimation", "logLikelihoodEstimation",
+              if (!isTRUE(scenario$linearization)) "conditionalDistributionSampling")
+  missing_tasks <- needed[!vapply(needed, function(t) scenario_task(scenario, t), logical(1))]
+  if (length(missing_tasks) > 0) {
+    stop("`scenario$tasks` must enable: ", paste(missing_tasks, collapse = ", "),
+         " (the likelihood ratio test needs the log-likelihood", 
+         if (!isTRUE(scenario$linearization)) ", which by importance sampling needs the conditional distribution",
+         ").", call. = FALSE)
+  }
+  invisible(scenario)
 }
 
 
@@ -287,10 +352,11 @@ wald_prescreen <- function() {
 #' population parameters, so categorical covariates with several dummy
 #' coefficients are handled automatically.
 #' @noRd
-test_covariate_removal <- function(parameter, covariate, reference_fit, linearization = FALSE) {
+test_covariate_removal <- function(parameter, covariate, reference_fit, linearization = FALSE,
+                                   scenario = NULL) {
   t0 <- Sys.time()
   set_covariate_relation(parameter, covariate, FALSE)
-  fit <- run_full_estimation(linearization = linearization)
+  fit <- run_full_estimation(linearization = linearization, scenario = scenario)
 
   df        <- reference_fit$n_params - fit$n_params
   delta_ofv <- fit$criteria[["OFV"]] - reference_fit$criteria[["OFV"]]
@@ -326,7 +392,23 @@ test_covariate_removal <- function(parameter, covariate, reference_fit, lineariz
 #' (checkpoint).
 #'
 #' @param project_file Path of the Monolix project (.mlxtran) holding the covariate model to reduce, e.g. the final model of a COSSAC or SCM search.
-#' @param linearization If TRUE, the log-likelihood is computed by linearization instead of importance sampling. Every model of the run is evaluated the same way, so the OFV differences stay comparable.
+#' @param linearization If TRUE, the log-likelihood is computed by linearization instead of importance sampling. Every model of the run is evaluated the same way, so the OFV differences stay comparable. Ignored when `scenario` is given (its own `linearization` element is used).
+#' @param scenario            optional Monolix scenario, a list as returned by
+#'                             lixoftConnectors::getScenario() (`tasks`, `linearization`,
+#'                             `plotList`). NULL (default): every model is estimated with
+#'                             the fixed chain SAEM + conditional distribution sampling +
+#'                             log-likelihood, which is the fastest valid option. With a
+#'                             scenario, the tasks it enables are run for EVERY model
+#'                             (the base model and each candidate) through setScenario()
+#'                             and runScenario(): add standardErrorEstimation,
+#'                             conditionalModeEstimation or plots to get complete
+#'                             diagnostics for each model, at the price of the run time.
+#'                             It must enable populationParameterEstimation and
+#'                             logLikelihoodEstimation, plus conditionalDistributionSampling
+#'                             when the likelihood is computed by importance sampling. If it
+#'                             estimates the standard errors (not by linearization), the
+#'                             Wald step of `fast_screening` reuses them instead of
+#'                             running a separate estimation
 #' @param alpha               LRT level to KEEP a relation (Monolix's own SCM
 #'                             backward step defaults to 0.01). The critical OFV
 #'                             increase is critical_ofv(alpha, df), df being the
@@ -377,6 +459,7 @@ backward_elimination <- function(project_file,
                                   diagnostic_fun = NULL,
                                   output_dir = tempdir(),
                                   linearization = FALSE,
+                                  scenario = NULL,
                                   fast_screening = TRUE,
                                   save_all = TRUE,
                                   export_charts = FALSE,
@@ -386,6 +469,10 @@ backward_elimination <- function(project_file,
 
   total_t0 <- Sys.time()
   mlx_console$seen <- character()
+  if (!is.null(scenario)) {
+    check_scenario(scenario)
+    linearization <- isTRUE(scenario$linearization)   # the scenario decides how the likelihood is computed
+  }
 
   dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
   output_dir   <- normalizePath(output_dir, winslash = "/", mustWork = TRUE)
@@ -443,7 +530,7 @@ backward_elimination <- function(project_file,
     .lx("setProjectSettings", directory = file.path(output_dir, base_name))
 
     t0 <- Sys.time()
-    reference_fit <- run_full_estimation(linearization = linearization)
+    reference_fit <- run_full_estimation(linearization = linearization, scenario = scenario)
     base_secs <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
     if (export_charts) .lx("computeChartsData")
     .lx("saveProject", current_project)
@@ -479,7 +566,10 @@ backward_elimination <- function(project_file,
 
     # order candidates: Wald pre-screening (fast) or as-is (exhaustive)
     if (fast_screening) {
-      capture_mlx(.lx("runStandardErrorEstimation", linearization = FALSE), show = "new")
+      # A scenario that already estimated the standard errors (by SAEM) has done this run
+      if (!(scenario_task(scenario, "standardErrorEstimation") && !linearization)) {
+        capture_mlx(.lx("runStandardErrorEstimation", linearization = FALSE), show = "new")
+      }
       active <- wald_prescreen()
       if (!is.null(covariates_to_test)) {
         key <- paste(active$parameter, active$covariate, sep = ":")
@@ -509,7 +599,7 @@ backward_elimination <- function(project_file,
       .lx("setProjectSettings", directory = file.path(output_dir, cand_name))
 
       res <- test_covariate_removal(active$parameter[i], active$covariate[i],
-                                     reference_fit, linearization)
+                                     reference_fit, linearization, scenario)
       res$path <- cand_path
       res$run  <- run
       candidates[[i]] <- res

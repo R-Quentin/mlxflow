@@ -13,6 +13,7 @@ backward_elimination(
   diagnostic_fun = NULL,
   output_dir = tempdir(),
   linearization = FALSE,
+  scenario = NULL,
   fast_screening = TRUE,
   save_all = TRUE,
   export_charts = FALSE,
@@ -42,7 +43,24 @@ reported as a warning and does not stop the run.}
 
 \item{output_dir}{folder for everything listed above}
 
-\item{linearization}{If TRUE, the log-likelihood is computed by linearization instead of importance sampling. Every model of the run is evaluated the same way, so the OFV differences stay comparable.}
+\item{linearization}{If TRUE, the log-likelihood is computed by linearization instead of importance sampling. Every model of the run is evaluated the same way, so the OFV differences stay comparable. Ignored when `scenario` is given (its own `linearization` element is used).}
+
+\item{scenario}{optional Monolix scenario, a list as returned by
+lixoftConnectors::getScenario() (`tasks`, `linearization`,
+`plotList`). NULL (default): every model is estimated with
+the fixed chain SAEM + conditional distribution sampling +
+log-likelihood, which is the fastest valid option. With a
+scenario, the tasks it enables are run for EVERY model
+(the base model and each candidate) through setScenario()
+and runScenario(): add standardErrorEstimation,
+conditionalModeEstimation or plots to get complete
+diagnostics for each model, at the price of the run time.
+It must enable populationParameterEstimation and
+logLikelihoodEstimation, plus conditionalDistributionSampling
+when the likelihood is computed by importance sampling. If it
+estimates the standard errors (not by linearization), the
+Wald step of `fast_screening` reuses them instead of
+running a separate estimation}
 
 \item{fast_screening}{if TRUE (default), candidates are tested in
 Wald-ranked order (least significant first) and

@@ -2,6 +2,32 @@
 
 First assembly of the package from three scripts (engine, readers/diagnostics, flowcharts).
 
+## Changes (this round)
+
+* `test_variability()` (replaces the tutorial helper `test_IOV()`): tests the addition of a random
+  effect on each parameter, at an occasion level (IOV) or at `"id"` (IIV), by LRT. `forward = TRUE`
+  selects the effects stepwise like `backward_elimination()`. Every model has its own result folder
+  (the starting project is no longer overwritten, which caused the "old inconsistent project" warnings),
+  the default level is the first one that is not `"id"`, and a model with `"id"` only asks for
+  `level = "id"` explicitly.
+* `backward_elimination()` and `test_variability()` take a `scenario`: the tasks of a Monolix scenario
+  are run for every model (fast, or complete with standard errors and plots) instead of the fixed chain.
+* `load_project_quiet()` is exported: loads a project without the Monolix notices, checks the path first
+  and shows what Monolix printed if it fails. Internal callers are unchanged.
+* `compare_two_models()` and `compare_models()` take `delta` (`TRUE`, `FALSE`, `"abs"`, `"rel"`) to choose
+  the differences shown in the table; `compare_models()` can now add the differences to a `reference` model.
+* `kable_param_comparison()`: parameter comparison table with estimates, RSE and shrinkage, their change,
+  and the bold / colour thresholds of `kable_param_table()`. Used by the comparison report.
+* `compare_obspred_metrics()` returns the metrics in columns by default (`format = "wide"`, `"long"` gives
+  the previous layout) and handles strata (`split`) correctly instead of listing them as a metric; strata
+  or observed variables that only one model has are reported, and a single observed variable named
+  differently in the two models is matched.
+* The backward flowchart: kept relations in grey, non-significant ones in white with a dark red outline, the
+  dropped relation in red, with new legend texts (`not_sig_label`, `{alpha}` in labels). The combined chart
+  no longer draws the border of significant nodes with the non-significant colour.
+* The diagnostic report is now written as `<model>_report.html` (it was `<model>_model_checkup.html`).
+* The tutorial is now `inst/tutorials/mlxflow_tutorial.R` (its IOV part uses another demo model).
+
 ## New
 
 * `compare_two_models()` now returns a list like `compare_models()`: `data` (the tibble it used to
@@ -57,7 +83,7 @@ Removed: `compare_summaries_1/2/3`, `build_scm_data_V1/V2` (duplicates of newer 
   `max_steps` is now `max_iter`, `backward_steps.csv` is now `backward_iterations.csv`.
 * `compare_two_models()`: the one-value case now returns `delta_<value>` / `delta_rel_<value>`.
 * `run_diagnostics()`: the html report is named after the model (it used to be a generic
-  `model_checkup.html`) and is written in the working directory unless `knit_dir` is given.
+  `<model>_model_checkup.html`) and is written in the working directory unless `knit_dir` is given.
 * `model_name` of `read_models()` is the folder name.
 
 ## Bug fixes

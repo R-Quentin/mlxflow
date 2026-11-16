@@ -31,6 +31,7 @@ setwd(cur_dir)
 # Load demo
 project <- paste0(getDemoPath(), "/5.models_for_individual_parameters/5.2.covariate_model/warfarin_covariate1_project.mlxtran")
 loadProject(projectFile = project)
+# load_project_quiet(project)  # Same, without the Monolix notices on the console (checks the path first)
 
 # Copy in working directory
 saveProject(projectFile = "warfarin_example")
@@ -186,7 +187,7 @@ fs::dir_ls(file.path(cur_dir, "warfarin_example/ChartsData")) # Full path in cas
 #' @param prefix      : Optional input for Rmd. Prefix used for saved outputs names
 
 # Most basic use:
-run_diagnostics(model_dir = "warfarin_example")
+run_diagnostics(model_dir = "warfarin_example")   # -> warfarin_example_report.html
 
 plot_covariate_search("warfarin_example")
 
@@ -459,6 +460,16 @@ full_mod_path <- "warfarin_example/COSSAC/ModelBuilding_003/ModelBuilding_003.ml
 backward_path <- "warfarin_example/Backward"
 
 
+# -> Optional scenario
+# By default every model is estimated with the shortest valid chain (SAEM + conditional
+# distribution sampling + log-likelihood). A scenario (same list as for setScenario()) is
+# run instead for EVERY model of the search: use it to get standard errors, conditional modes
+# or plots for each one. It must enable populationParameterEstimation, logLikelihoodEstimation
+# and, for an importance sampling likelihood, conditionalDistributionSampling.
+full_scenario <- getScenario()
+full_scenario$tasks[c("populationParameterEstimation", "conditionalDistributionSampling",
+                      "standardErrorEstimation", "logLikelihoodEstimation")] <- TRUE
+
 # -> Optional personalized diagnostic
 # Any function(iter, project_file) can be used, e.g. to launch run_diagnostics() on each model.
 
@@ -477,6 +488,7 @@ result <- backward_elimination(
   save_all       = TRUE,     #' save all model run, change to FALSE to keep best only
   # resume         = TRUE,     #' resume from last finished run in case of failure
   overwrite      = TRUE,     #' overwrite existing output_dir (parameter changed?)
+  # scenario       = full_scenario, #' optional: tasks run for every model (default: fastest valid chain)
   # diagnostic_fun = my_diag, #' optional personalized diagnostic (verbose)
   output_dir     = backward_path
 )
@@ -514,21 +526,25 @@ message("Last selected model: ", backward_data$last_best_name,
         "\nLast covariate model: ", paste(unlist(last_model), collapse = ", "))
 
 
-# Example of large colour management (reusable)
-{
-  my_backward_colors <- eval(formals(plot_flowchart)$colors)
-  my_backward_colors$base    <- list(fill = "green4", border = "darkgreen", font = "white") # Colours of forward last best (base model)
-  my_backward_colors$best    <- list(fill = "brown3", border = "brown4",    font = "white",  arrow = "brown3") # Dropped (max)
-  my_backward_colors$not_sig <- list(fill = "white",  border = "gray30",    font = "black",  arrow = "gray40") # Dropped
-  my_backward_colors$sig     <- list(fill = "gray90", border = "gray30",    font = "grey30", arrow = "gray80") # Kept
-}
+# Default look: relations kept (significant) are grey, those that are not significant are white
+# with a dark red outline, and the relation dropped at each iteration is red.
+# Labels and colours follow the type of search, so the call stays short:
+plot_flowchart(
+  backward_data,
+  title      = "Backward Elimination - Warfarin PopPK"
+)
+
+# Example of colour management (reusable): start from the default palette and change one category
+my_backward_colors <- eval(formals(plot_flowchart_combined)$colors_backward)
+my_backward_colors$base <- list(fill = "green4", border = "darkgreen", font = "white") # Colours of forward last best (base model)
 
 plot_flowchart(
   backward_data,
   title         = "Backward Elimination - Warfarin PopPK",
   iter_label    = "Iteration",
-  best_label    = "Dropped (best of iteration)",
-  sig_label     = "Significant",
+  best_label    = "Worst of iteration : dropped",      # Legend labels can be changed as well
+  sig_label     = "Significant (LRT p < {alpha}) : kept", # {alpha} is replaced by the level of the test
+  not_sig_label = "Not significant",
   base_label    = "Full model \n(all covariates)",
   colors        = my_backward_colors
 )
@@ -641,6 +657,8 @@ model_without <- read_summary("warfarin_example/COSSAC/ModelBuilding_002/ModelBu
 #     - first and second : models (read_summary(..., full = TRUE) objects, summary.txt paths or model folders)
 #     - values           : column(s) to compare (estimate, rse_pct etc.). Comparison following : second - first
 #     - clean            : if TRUE (default), clean covariates label (beta_CL_WT -> ~WT)
+#     - delta            : differences shown in the table: c("abs", "rel") (default, = TRUE), "abs", "rel" or FALSE (none)
+#                          Only the table changes: $data always holds both.
 
 one_param_two_mod <- compare_two_models(
   first  = model_with, 
@@ -657,6 +675,10 @@ one_param_two_mod$kable   # styled table (the footnote gives the two models)
 one_param_two_mod$kable |> 
   column_spec(5, italic = TRUE) |> 
   kable_styling(font_size = 9)
+
+# Without the differences (or with only one of them)
+compare_two_models(model_with, model_without, delta = FALSE)$kable
+compare_two_models(model_with, model_without, delta = "rel")$kable
 
 
 
@@ -680,6 +702,7 @@ final <- read_summary("warfarin_final/summary.txt", full = TRUE)
 #'     - values           : column(s) to compare (estimate, rse_pct etc.). Comparison following : second - first
 #'     - clean            : if TRUE (default), clean covariates label (beta_CL_WT -> ~WT)
 #'     - bold_above       : values above a threshold are printed in bold in the table (here RSE > 30 %)
+#'     - delta            : see situation A
 
 
 # -> Estimated parameters
@@ -695,33 +718,32 @@ all_param_two_mod
 
 
 # -> Prediction errors (read from their ChartsData)
+# compare_obspred_metrics():
+#     - first and second : model folders, read_summary() objects or obspred_diagnostics() outputs
+#     - labels           : names of the two models
+#     - format           : "wide" (default): one row per model (and "delta") with the metrics in columns,
+#                          "long": one row per metric, one column per model
+#     - split            : keep the strata of the Monolix `split` when both models have them (default).
+#                          If only one has, the observations are pooled for both (a message tells so)
+#     - y_type_labels, split_labels : rename observed variables / strata so that the two models agree
 two_mod_metrics <- compare_obspred_metrics(first = base, second = final, labels = c("Base", "Final"))
 two_mod_metrics
 
 # Can also be formatted through kableExtra:
-two_mod_metrics_wide <- two_mod_metrics |>
-  select(-DV, -Y_TYPE) |>
-  pivot_longer(
-    cols      = c(Base, Final, delta), 
-    names_to  = "Stat", 
-    values_to = "Value"
-  ) |>
-  pivot_wider(
-    names_from = metric, 
-    values_from = Value
-  ) |>
-  arrange(Prediction, factor(Stat, levels = c("Base", "Final", "delta"))) 
-
-two_mod_metrics_wide |>
+two_mod_metrics |>
+  select(-DV, -Y_TYPE) |> 
   select(-Prediction) |> 
   kable(
     digits = 2,
     caption = "Performance changes",
     booktabs = TRUE
   ) |> 
-  row_spec(which(two_mod_metrics_wide$Stat == "delta"), bold = TRUE) |> 
-  auto_pack_rows(two_mod_metrics_wide, group_vars = "Prediction") |> 
+  row_spec(which(two_mod_metrics$Model == "delta"), bold = TRUE) |> 
+  auto_pack_rows(two_mod_metrics, group_vars = "Prediction") |> 
   kable_styling(font_size = 10, bootstrap_options = c("striped", "bordered", "hover"))
+
+# Long format, if you prefer to reshape it yourself
+compare_obspred_metrics(first = base, second = final, labels = c("Base", "Final"), format = "long")
 
 
 
@@ -730,7 +752,7 @@ two_mod_metrics_wide |>
 # Just for example : COSSAC workflow models comparison 
 
 # A real situation could be : Is IOV useful? Try IOV implementation on each
-# parameter and compare. See "Testing for IOV" section.
+# parameter and compare. See "Testing variability (IOV / IIV)" section.
 
 
 # One column
@@ -746,7 +768,9 @@ all_param_all_mod <- compare_models(
   bold_above = c(shrinkage = 50))
 all_param_all_mod
 
-
+# Differences to a reference model (the first one by default, or `reference = "<folder name>"`)
+# delta = TRUE / "abs" / "rel" adds them next to each model (FALSE by default)
+compare_models(dir = "warfarin_example/COSSAC", values = "estimate", clean = TRUE, delta = "abs")
 
 
 # Convergence assessment     ===================================================
@@ -798,129 +822,25 @@ run_diagnostics("warfarin_example", assessment = "warfarin_example/AssessmentRes
 
 
 
-# Testing for IOV            ===================================================
-  ## Helper functions: WORK IN PROGRESS ----------------------------------------
-# Load the project, optionally switch on IOV, run, save and compute charts
-run_and_save <- function(project_file, run_path, scenario = NULL, iov = NULL) {
-  loadProject(projectFile = project_file)
-  
-  # iov = list(level = "Admin", parameter = "ka2")
-  if (!is.null(iov)) {
-    args <- stats::setNames(
-      list(stats::setNames(list(TRUE), iov$parameter)),
-      iov$level
-    )
-    do.call(setIndividualParameterVariability, args)
-  }
-  
-  if (!is.null(scenario)) setScenario(scenario)
-  
-  runScenario()
-  saveProject(run_path)
-  computeChartsData()
-  saveProject()
-  invisible(run_path)
-}
+# Testing variability (IOV / IIV)  =============================================
 
-
-#' -------------------------------- test_IOV() --------------------------------
-#' Test the addition of IOV on one parameter at a time
-#'
-#' Run 0 is the base model (no change), then one run per tested parameter with
-#' IOV added on the chosen variability level. Each run is saved in `output_dir`.
-#'
-#' @param project_file Path to the current model (.mlxtran).
-#' @param output_dir Folder where the runs are saved.
-#' @param parameters Parameters to test. Default: all model parameters.
-#' @param level Variability level carrying the IOV. Default: first level
-#'   listed in the variability model (e.g. "OCC").
-#' @param scenario Scenario list passed to setScenario(). If NULL (default),
-#'   setScenario() is not called and the project scenario is used.
-#' @return A tibble (invisibly) summarising the runs.
-test_IOV <- function(project_file,
-                     output_dir,
-                     parameters = NULL,
-                     level      = NULL,
-                     scenario   = NULL) {
-  
-  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  # Defaults from the model
-  loadProject(projectFile = project_file)
-  model <- getIndividualParameterModel()
-  
-  if (is.null(parameters)) parameters <- model$name
-  if (is.null(level)) level <- names(model$variability)[1]
-  
-  # Checks
-  if (!level %in% names(model$variability)) {
-    stop("Unknown variability level: ", level,
-         ". Available: ", paste(names(model$variability), collapse = ", "))
-  }
-  unknown <- setdiff(parameters, model$name)
-  if (length(unknown) > 0) {
-    stop("Unknown parameter(s): ", paste(unknown, collapse = ", "))
-  }
-  
-  # Skip parameters that already have IOV on this level
-  already_iov <- names(which(model$variability[[level]]))
-  skipped <- intersect(parameters, already_iov)
-  if (length(skipped) > 0) {
-    message("Skipping (IOV already present on '", level, "'): ",
-            paste(skipped, collapse = ", "))
-  }
-  parameters <- setdiff(parameters, skipped)
-  
-  # Run definitions: run 0 = base, then one run per parameter
-  runs <- tibble::tibble(
-    run       = c("run00_base", sprintf("run%02d_%s", seq_along(parameters), parameters)),
-    parameter = c(NA_character_, parameters)
-  )
-  runs$path   <- file.path(output_dir, runs$run)
-  runs$status <- NA_character_
-  
-  # Execute
-  for (i in seq_len(nrow(runs))) {
-    message("[", i, "/", nrow(runs), "] ", runs$run[i])
-    
-    iov <- if (is.na(runs$parameter[i])) {
-      NULL
-    } else {
-      list(level = level, parameter = runs$parameter[i])
-    }
-    
-    runs$status[i] <- tryCatch(
-      {
-        run_and_save(project_file, runs$path[i], scenario = scenario, iov = iov)
-        "ok"
-      },
-      error = function(e) {
-        warning(runs$run[i], " failed: ", conditionMessage(e), call. = FALSE)
-        paste("error:", conditionMessage(e))
-      }
-    )
-  }
-  
-  invisible(runs)
-}
-
-
-# TODO: Add test_IOV() to the package and automate the forwarding (similar to
-# backward_elimination()) because currently it only tests 1 relation
-
-# TODO: Set default level as the first listed in the variability model that is
-# not ID (id, Id, ID). If ID is the only level print a warning such as: "Only
-# one level found: 'ID', if you are trying to test IIV (omega), use level =
-# 'ID')"
-
-# TODO: Rename function with something that call up to the fact that you can also test IIV.
-
-
+# test_variability() adds a random effect to one parameter at a time and compares each model
+# with the reference by a likelihood ratio test (LRT).
+#   - level = an occasion level (e.g. "OCC") : inter-occasion variability (IOV)
+#   - level = "id"                            : inter-individual variability (IIV), i.e. which
+#                                               parameters need an omega
+# Arguments and outputs are documented in the header of test_variability(). In short:
+#   - forward = FALSE (default): one pass, every parameter against the base model.
+#     forward = TRUE: stepwise selection like backward_elimination(), until nothing is
+#     significant at `alpha`.
+#   - Every model is saved as run<NNN>_I<k>_<parameter>_<level> with its own results (the
+#     starting project is never overwritten); variability_log.csv holds every test.
+#   - scenario: same as in backward_elimination() (fast or complete estimation of every model).
 
   ## Example for tutorial               ----------------------------------------
 
 # -> Load project
-# We'll use a different example to try IOV implementation
+# We'll use a different example (not the warfarin one) to try IOV implementation
 IOV_project <- paste0(getDemoPath(), "/5.models_for_individual_parameters/5.4.inter_occasion_variability/iov3_project.mlxtran")
 loadProject(projectFile = IOV_project)
 
@@ -940,7 +860,7 @@ getIndividualParameterModel()$name
 getIndividualParameterModel()$variability |> names()
 
 
-# -> Run forward IOV test
+# -> Run the IOV test
 # Personalized scenario
 fast_scenario <- list(
   tasks = c(
@@ -959,18 +879,38 @@ fast_scenario <- list(
   )
 )
 
-# Automatic forward IOV test
-IOV_res <- test_IOV(
+# One pass: IOV on each parameter against the base model
+IOV_res <- test_variability(
   project_file = "IOV_example.mlxtran",
   output_dir   = "IOV_example/IOV_test",
   # parameters   = c("ka", "V",  "Cl"), # Default = all
-  level        = "OCC", # Default = first variability level (!ID)
+  level        = "OCC", # Default = first variability level that is not the individual one
+  alpha        = 0.05,
   scenario     = fast_scenario
 )
 
+IOV_res$runs            # one row per model: OFV, delta OFV, df, p-value, verdict
+IOV_res$final_project   # = the base model in a single pass: nothing is adopted
 IOV_res |> saveRDS("IOV_example/IOV_test/IOV_res.rds")
 # IOV_res <- read_rds("IOV_example/IOV_test/IOV_res.rds")
 
+# Forward selection: adopt the most significant IOV, then test the others on top of it
+IOV_fwd <- test_variability(
+  project_file = "IOV_example.mlxtran",
+  output_dir   = "IOV_example/IOV_forward",
+  level        = "OCC",
+  forward      = TRUE,
+  alpha        = 0.05,
+  scenario     = fast_scenario
+)
+IOV_fwd$history         # base model, then each IOV added
+IOV_fwd$stop_reason
+
+# And IIV (does a parameter need an omega at all?)
+# test_variability("IOV_example.mlxtran", output_dir = "IOV_example/IIV_test", level = "id")
+
+
+  ## Check the results         ----------------------------------------------------
 
 # -> Check OFV
 IOV_df <- read_models(file.path("IOV_example/IOV_test"), full = FALSE)
@@ -978,25 +918,27 @@ IOV_df <- read_models(file.path("IOV_example/IOV_test"), full = FALSE)
 IOV_df |> 
   mutate(
     delta_OFV  = OFV - OFV[model_id == 0],
-    delta_BICc = BIC - BIC[model_id == 0],
+    delta_BICc = BICc - BICc[model_id == 0],
   ) |> 
   select(model_name, OFV, delta_OFV, AIC, BIC, BICc, delta_BICc) |> 
   arrange(OFV) #|> kable() |> kable_styling()
 
 
-# -> Check parameters
+# -> Check parameters (differences to the base model, the first one)
 IOV_comp <- compare_models(
   dir = "IOV_example/IOV_test", 
   values = c("estimate", "rse_pct", "shrinkage"), 
   clean = TRUE, 
-  bold_above = c(res_pct = 30, shrinkage = 50))
+  bold_above = c(rse_pct = 30, shrinkage = 50),
+  delta = FALSE)
 IOV_comp
 
 
-compare_obspred_metrics(first = "IOV_example/IOV_test/run00_base", second = "IOV_example/IOV_test/run02_V")
+# -> Check predictions (adapt the name of the model to compare to the base)
+compare_obspred_metrics(first = "IOV_example/IOV_test/run000_I0_base", second = "IOV_example/IOV_test/run002_I1_V_OCC",
+                        labels = c("Base", "IOV on V"))
 
-op1 <- obspred_diagnostics("IOV_example/IOV_test/run00_base")
-op2 <- obspred_diagnostics("IOV_example/IOV_test/run02_V")
+op1 <- obspred_diagnostics("IOV_example/IOV_test/run000_I0_base")
+op2 <- obspred_diagnostics("IOV_example/IOV_test/run002_I1_V_OCC")
 op1$obspred | op2$obspred
-# (Well that was a bad example)
 

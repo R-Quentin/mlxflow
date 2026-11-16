@@ -3,7 +3,7 @@
 #' Knits an Rmarkdown report for one Monolix model. Two kinds of output,
 #' controlled independently:
 #' \itemize{
-#'   \item the html **report**, always written: `<knit_prefix>_<template>.html`
+#'   \item the html **report**, always written: `<knit_prefix>_report.html`
 #'     in `knit_dir`;
 #'   \item the standalone **plots, tables and .rds**, written only if
 #'     `save_output = TRUE`, in `output_dir`, named `<prefix>_<name>.<ext>`.
@@ -59,7 +59,7 @@ run_diagnostics <- function(model_dir,
   if (!is.null(assessment)) params$assessment <- assessment
 
   .render_report(template,
-                 output_file = paste0(knit_prefix, "_", template$name, ".html"),
+                 output_file = paste0(knit_prefix, "_report.html"),
                  knit_dir    = knit_dir,
                  params      = params)
 }

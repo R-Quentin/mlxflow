@@ -1,27 +1,48 @@
   ## MODULE 4: plot_flowchart() ============================================
 
     ### ---- MODULE 4a: plot_flowchart() ---
+# Legend text of the "significant" category: the level of the test is added after the label
+# (or where the label says {alpha}, e.g. "Significant (LRT p < {alpha}) : kept")
+#' @noRd
+.legend_label <- function(label, alpha) {
+  if (grepl("{alpha}", label, fixed = TRUE)) sub("{alpha}", alpha, label, fixed = TRUE)
+  else paste0(label, " (LRT p < ", alpha, ")")
+}
+
+# Default legend texts of a flowchart: what the three categories mean depends on the search
+# (forward: significant = the relation improves the model; backward: significant = kept)
+#' @noRd
+.flowchart_labels <- function(type, best_label = NULL, sig_label = NULL, not_sig_label = NULL) {
+  backward <- identical(type, "backward")
+  best_label <- best_label %||% if (backward) "Worst of iteration : dropped" else "Best of iteration"
+  sig_label  <- sig_label  %||% if (backward) "Significant (LRT p < {alpha}) : kept" else "Significant"
+  not_sig_label <- not_sig_label %||% if (backward) "Not significant" else paste0("Not ", tolower(sig_label))
+  list(best = best_label, sig = sig_label, not_sig = not_sig_label)
+}
+
 #' Renders forward SCM or backward elimination flowchart using ggraph
 #'
 #' @param scm_data list from build_scm_data() or build_backward_data()
 #' @param title plot title (the LRT level shown in the legend is taken from scm_data$alpha, set in build_*_data())
 #' @param iter_label header prefix, e.g. "Iteration"
-#' @param best_label legend label for best-of-iteration nodes
-#' @param sig_label legend label for significant nodes; "Not <sig_label>" auto-derived
-#' @param base_label label displayed inside the base/full model node
+#' @param best_label legend label for best-of-iteration nodes (default: "Best of iteration"; for a backward chart "Worst of iteration : dropped")
+#' @param sig_label legend label for significant nodes. The level of the test is added after it, "Significant" giving "Significant (LRT p < 0.01)"; write \code{\{alpha\}} in the label to choose where it goes. Default: "Significant"; for a backward chart "Significant (LRT p < \{alpha\}) : kept"
+#' @param not_sig_label legend label for the non-significant nodes (default: "Not <sig_label>"; for a backward chart "Not significant")
+#' @param base_label label displayed inside the base/full model node (default: "Base model (no covariates)"; for a backward chart "Full model (all covariates)")
 #' @param iter0_label header of the first column (default: "Full model" for a backward chart, "Base" otherwise)
 #' @param node_size size passed to geom_node_point (default 26)
 #' @param node_spacing vertical spacing multiplier between nodes (default 1.2)
-#' @param colors named list with one sub-list per category (base, best, sig, not_sig) and an arrow sub-list. Each category accepts: fill, border, font. Arrow accepts: best, sig, not_sig.
+#' @param colors named list with one sub-list per category (base, best, sig, not_sig). Each category accepts: fill, border, font, and arrow (the colour of the arrows reaching those nodes). The default is the forward palette (best = green); a backward chart drawn with the default colours uses the palette of `colors_backward` in [plot_flowchart_combined()] instead (kept = grey, dropped = red). Change one category with e.g. `modifyList(eval(formals(plot_flowchart)$colors), list(best = list(fill = "palegreen3")))`.
 #'
 #' @export
 plot_flowchart <- function(
     scm_data,
     title         = "SCM Flowchart",
     iter_label    = "Iteration",
-    best_label    = "Best of iteration",
-    sig_label     = "Significant",
-    base_label    = "Base model\n(no covariates)",
+    best_label    = NULL,
+    sig_label     = NULL,
+    not_sig_label = NULL,
+    base_label    = NULL,
     iter0_label   = NULL,
     node_size     = 25,
     node_spacing  = 1.2,
@@ -37,6 +58,14 @@ plot_flowchart <- function(
   alpha <- scm_data$alpha
   if (is.null(iter0_label))
     iter0_label <- if (identical(scm_data$type, "backward")) "Full model" else "Base"
+  # Same default colours for every search would show a dropped relation in the "best" green
+  if (missing(colors) && identical(scm_data$type, "backward")) {
+    colors <- eval(formals(plot_flowchart_combined)$colors_backward)
+  }
+  legend_text <- .flowchart_labels(scm_data$type, best_label, sig_label, not_sig_label)
+  if (is.null(base_label)) {
+    base_label <- if (identical(scm_data$type, "backward")) "Full model\n(all covariates)" else "Base model\n(no covariates)"
+  }
 
   g <- igraph::graph_from_data_frame(
     d        = edges,
@@ -163,21 +192,21 @@ plot_flowchart <- function(
              fill = colors$best$fill, color = colors$best$border) +
     annotate("text", hjust = 0, size = 2.8, color = "gray20",
              x = x_legend + 0.15, y = y_legend,
-             label = best_label) +
+             label = legend_text$best) +
     
     annotate("point", shape = 22, size = 5,
              x = x_legend, y = y_legend - 0.45,
              fill = colors$sig$fill, color = colors$sig$border) +
     annotate("text", hjust = 0, size = 2.8, color = "gray20",
              x = x_legend + 0.15, y = y_legend - 0.45,
-             label = paste0(sig_label, " (LRT p < ", alpha, ")")) +
+             label = .legend_label(legend_text$sig, alpha)) +
     
     annotate("point", shape = 22, size = 5,
              x = x_legend, y = y_legend - 0.9,
              fill = colors$not_sig$fill, color = colors$not_sig$border) +
     annotate("text", hjust = 0, size = 2.8, color = "gray20",
              x = x_legend + 0.15, y = y_legend - 0.9,
-             label = paste0("Not ", tolower(sig_label))) +
+             label = legend_text$not_sig) +
     
     labs(title = title) +
     
@@ -212,15 +241,17 @@ plot_flowchart <- function(
 #' @param forward_base_label text inside the forward base model node
 #' @param forward_sig_label significance label for forward legend
 #' @param forward_best_label best-of-iter label for forward legend
+#' @param forward_not_sig_label label of the non-significant forward nodes (default: "Not <forward_sig_label>")
 #' @param backward_title Title of the backward section.
 #' @param backward_iter_label header prefix for backward columns (default "Iteration")
 #' @param backward_base_label text inside the backward full model node
-#' @param backward_sig_label significance label for backward legend
-#' @param backward_best_label best-of-iter label for backward legend
+#' @param backward_sig_label significance label for backward legend; write \code{\{alpha\}} where the level of the test goes (without it, " (LRT p < alpha)" is added after the label, as for the forward legend)
+#' @param backward_not_sig_label label of the non-significant backward nodes (relation that could be removed)
+#' @param backward_best_label label of the relation removed at each iteration (the least significant one)
 #' @param node_size ggraph point size (default 25)
 #' @param node_spacing vertical spacing multiplier (default 1.2)
 #' @param colors_forward colors list (same structure as plot_flowchart)
-#' @param colors_backward colors list for backward phase
+#' @param colors_backward colors list for backward phase (same structure as `colors_forward`): kept relations (`sig`) are grey, the relation dropped at each iteration (`best`) is red, the others that were not significant (`not_sig`) are white with a dark red outline
 #' @param separator_color dashed separator line color
 #'
 #' @export
@@ -232,11 +263,13 @@ plot_flowchart_combined <- function(
     forward_base_label   = "Base model\n(no covariates)",
     forward_sig_label    = "Significant",
     forward_best_label   = "Best of iteration",
+    forward_not_sig_label = NULL,
     backward_title       = "Backward deletion",
     backward_iter_label  = "Iteration",
     backward_base_label  = "Full model\n(all covariates)",
-    backward_sig_label   = "Kept",
-    backward_best_label  = "Dropped (worst)",
+    backward_sig_label   = "Significant (LRT p < {alpha}) : kept",
+    backward_not_sig_label = "Not significant",
+    backward_best_label  = "Worst of iteration : dropped",
     node_size            = 25,
     node_spacing         = 1.2,
     colors_forward       = list(
@@ -247,9 +280,9 @@ plot_flowchart_combined <- function(
     ),
     colors_backward      = list(
       base    = list(fill = "lightgreen",  border = "darkgreen",  font = "black"),
-      sig     = list(fill = "lightyellow", border = "gray30",     font = "black",  arrow = "black"),
-      not_sig = list(fill = "brown3",      border = "gray30",     font = "black",  arrow = "gray40"),
-      best    = list(fill = "steelblue",   border = "steelblue4", font = "white",  arrow = "steelblue")
+      sig     = list(fill = "gray90",      border = "gray30",     font = "grey30", arrow = "gray80"),   # kept
+      not_sig = list(fill = "white",       border = "brown4",     font = "black",  arrow = "black"),    # could be dropped
+      best    = list(fill = "brown3",      border = "brown4",     font = "white",  arrow = "brown3")    # dropped (worst)
     ),
     separator_color      = "gray50") {
   
@@ -257,6 +290,8 @@ plot_flowchart_combined <- function(
   edges <- merged_data$edges
   alpha_fwd <- merged_data$alpha_forward
   alpha_bwd <- merged_data$alpha_backward
+  forward_text  <- .flowchart_labels("forward",  forward_best_label,  forward_sig_label,  forward_not_sig_label)
+  backward_text <- .flowchart_labels("backward", backward_best_label, backward_sig_label, backward_not_sig_label)
   
   # Build igraph using uid as vertex identifier
   g <- igraph::graph_from_data_frame(
@@ -310,6 +345,8 @@ plot_flowchart_combined <- function(
     is_base_bwd                              ~ colors_backward$base$border,
     node_phase == "forward"  & is_best       ~ colors_forward$best$border,
     node_phase == "backward" & is_best       ~ colors_backward$best$border,
+    node_phase == "forward"  & is_sig        ~ colors_forward$sig$border,
+    node_phase == "backward" & is_sig        ~ colors_backward$sig$border,
     node_phase == "forward"                  ~ colors_forward$not_sig$border,
     TRUE                                     ~ colors_backward$not_sig$border
   )
@@ -436,21 +473,21 @@ plot_flowchart_combined <- function(
              fill = colors_forward$best$fill, color = colors_forward$best$border) +
     annotate("text", hjust = 0, size = 2.6, color = "gray20",
              x = x_leg_fwd + 0.15, y = y_legend,
-             label = forward_best_label) +
+             label = forward_text$best) +
     
     annotate("point", shape = 22, size = 4,
              x = x_leg_fwd, y = y_legend - 0.4,
              fill = colors_forward$sig$fill, color = colors_forward$sig$border) +
     annotate("text", hjust = 0, size = 2.6, color = "gray20",
              x = x_leg_fwd + 0.15, y = y_legend - 0.4,
-             label = paste0(forward_sig_label, " (LRT p < ", alpha_fwd, ")")) +
+             label = .legend_label(forward_text$sig, alpha_fwd)) +
     
     annotate("point", shape = 22, size = 4,
              x = x_leg_fwd, y = y_legend - 0.8,
              fill = colors_forward$not_sig$fill, color = colors_forward$not_sig$border) +
     annotate("text", hjust = 0, size = 2.6, color = "gray20",
              x = x_leg_fwd + 0.15, y = y_legend - 0.8,
-             label = paste0("Not ", tolower(forward_sig_label))) +
+             label = forward_text$not_sig) +
     
     # Backward legend
     annotate("point", shape = 22, size = 4,
@@ -458,21 +495,21 @@ plot_flowchart_combined <- function(
              fill = colors_backward$best$fill, color = colors_backward$best$border) +
     annotate("text", hjust = 0, size = 2.6, color = "gray20",
              x = x_leg_bwd + 0.15, y = y_legend,
-             label = backward_best_label) +
+             label = backward_text$best) +
     
     annotate("point", shape = 22, size = 4,
              x = x_leg_bwd, y = y_legend - 0.4,
              fill = colors_backward$sig$fill, color = colors_backward$sig$border) +
     annotate("text", hjust = 0, size = 2.6, color = "gray20",
              x = x_leg_bwd + 0.15, y = y_legend - 0.4,
-             label = paste0(backward_sig_label, " (LRT p < ", alpha_bwd, ")")) +
+             label = .legend_label(backward_text$sig, alpha_bwd)) +
     
     annotate("point", shape = 22, size = 4,
              x = x_leg_bwd, y = y_legend - 0.8,
              fill = colors_backward$not_sig$fill, color = colors_backward$not_sig$border) +
     annotate("text", hjust = 0, size = 2.6, color = "gray20",
              x = x_leg_bwd + 0.15, y = y_legend - 0.8,
-             label = paste0("Not ", tolower(backward_sig_label))) +
+             label = backward_text$not_sig) +
     
     labs(title = title) +
     

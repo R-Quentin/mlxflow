@@ -46,7 +46,7 @@ The path of the html report, invisibly.
 Knits an Rmarkdown report for one Monolix model. Two kinds of output,
 controlled independently:
 \itemize{
-  \item the html **report**, always written: `<knit_prefix>_<template>.html`
+  \item the html **report**, always written: `<knit_prefix>_report.html`
     in `knit_dir`;
   \item the standalone **plots, tables and .rds**, written only if
     `save_output = TRUE`, in `output_dir`, named `<prefix>_<name>.<ext>`.

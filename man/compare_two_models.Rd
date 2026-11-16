@@ -9,16 +9,17 @@ compare_two_models(
   second,
   values = "estimate",
   clean = TRUE,
-  bold_above = NULL
+  bold_above = NULL,
+  delta = c("abs", "rel")
 )
 }
 \arguments{
 \item{first, second}{The two models: the output of `read_summary(file, full = TRUE)`,
 a summary.txt path, or a model folder.}
 
-\item{values}{Columns to compare, e.g. `"estimate"` or `c("estimate", "rse_pct")`.
-Models without standard errors (partial estimation) have `NA` for the
-standard-error columns.}
+\item{values}{Columns to compare, e.g. `"estimate"` or `c("estimate", "rse_pct")`
+(also `"shrinkage"`, `"se_sa"`, ...). Models without standard errors (partial
+estimation) have `NA` for the standard-error columns.}
 
 \item{clean}{If TRUE (default), covariate labels are simplified
 (`beta_Cl_WT` becomes `~WT`).}
@@ -27,6 +28,11 @@ standard-error columns.}
 given threshold are printed in bold in the table, e.g. `c(rse_pct = 30)`
 highlights the relative standard errors above 30 percent for both models.
 Only the table is affected, not `data`.}
+
+\item{delta}{Which differences the **table** shows: `c("abs", "rel")` (default, or
+`TRUE`) the absolute difference and the relative one, `"abs"` or `"rel"` only one
+of them, `FALSE` none (the values of the two models only). Only the table is
+affected: `data` always holds both.}
 }
 \value{
 A list with `data` (tibble: `type`, `parameter`, then for each value the

@@ -46,7 +46,7 @@ safe_run <- function(expr, label) {
 
 # Run configuration 
 
-This is the only section you should normally need to edit between runs -- either directly in the chunk below, or by passing the same values to `rmarkdown::render(params = list(...))` instead (see `model_checkup_auto.R`).
+This is the only section you should normally need to edit between runs -- either directly in the chunk below, or by passing the same values to `rmarkdown::render(params = list(...))` instead (see `run_diagnostics()`).
 
 ```{r run-config}
 # Accepts a Windows-style path pasted with backslashes ("C:\...\model") and
@@ -79,7 +79,7 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 if (!nzchar(prefix)) prefix <- model_name
 
 # Save the outputs below to output_dir? Flip params$save_output to TRUE
-# (directly here, in the YAML above, or from model_checkup_auto.R) --
+# (directly here, in the YAML above, or from run_diagnostics()) --
 # see "Save outputs" at the very end.
 SAVE_OUTPUTS <- params$save_output
 
@@ -331,7 +331,7 @@ p_covariate_effects_combined
 
 # Save outputs 
 
-Flip `save_output` to `TRUE` in the params above (or from `model_checkup_auto.R`, then re-knit) to write the files below to `output_dir`. Every file name starts with `prefix`, so outputs from different models never collide in the same folder.
+Flip `save_output` to `TRUE` in the params above (or from `run_diagnostics()`, then re-knit) to write the files below to `output_dir`. Every file name starts with `prefix`, so outputs from different models never collide in the same folder.
 
 ```{r save-plots, eval=SAVE_OUTPUTS}
 save_plot <- function(plot, suffix, width = 8, height = 6) {
@@ -398,7 +398,7 @@ cat("Done --", model_name, "diagnostics complete.\n")
 
 
 Instead of pressing the Knit button in RStudio, you can execute an R command.  
-Using Knit button will generates model_checkup.html in working directory by default.  
-The command let you rename the html output (e.g. with the prefix) and change is location (e.g. in output_dir).  
--> See model_checkup_auto.R
+Using the Knit button generates the html in the working directory by default.  
+`run_diagnostics()` names it `<model>_report.html` (or `<knit_prefix>_report.html`) and lets you choose its location (`knit_dir`).  
+-> See `?run_diagnostics`
 

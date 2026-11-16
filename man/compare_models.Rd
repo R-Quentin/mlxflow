@@ -4,7 +4,14 @@
 \alias{compare_models}
 \title{Compare the parameters of all the models of a folder}
 \usage{
-compare_models(dir, values = "estimate", clean = TRUE, bold_above = NULL)
+compare_models(
+  dir,
+  values = "estimate",
+  clean = TRUE,
+  bold_above = NULL,
+  delta = FALSE,
+  reference = 1
+)
 }
 \arguments{
 \item{dir}{Folder holding one sub-folder per model.}
@@ -21,6 +28,15 @@ standard-error columns.}
 printed in bold in the table, e.g. `c(rse_pct = 30)`. With one value the name must
 be that value (`values = "rse_pct"`); with several, the columns of that value are
 highlighted. Only the table is affected, not `data`.}
+
+\item{delta}{Differences to the reference model, next to each other model: `FALSE`
+(default) none, `TRUE` or `c("abs", "rel")` the absolute and the relative
+difference, `"abs"` or `"rel"` only one of them. The columns are added to both
+`data` (`delta_<column>`, `delta_rel_<column>`) and the table; the reference
+model has none.}
+
+\item{reference}{The reference model of the differences: its position in the
+table (default 1, the first folder in alphabetical order) or its folder name.}
 }
 \value{
 A list with `data` (the joined tibble) and `kable` (the formatted table).
@@ -28,6 +44,6 @@ A list with `data` (the joined tibble) and `kable` (the formatted table).
 \description{
 Joins the parameter tables of every model found in `dir` (flat or nested
 layout, see [read_models()]), keeping the native Monolix row order, and
-builds a ready-to-print kable table. Purely visual: no difference is
-computed (use [compare_two_models()] for that).
+builds a ready-to-print kable table. By default purely visual; with `delta`
+the difference of every model to a reference model (the first one) is added.
 }

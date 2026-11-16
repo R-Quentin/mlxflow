@@ -8,9 +8,10 @@ plot_flowchart(
   scm_data,
   title = "SCM Flowchart",
   iter_label = "Iteration",
-  best_label = "Best of iteration",
-  sig_label = "Significant",
-  base_label = "Base model\\n(no covariates)",
+  best_label = NULL,
+  sig_label = NULL,
+  not_sig_label = NULL,
+  base_label = NULL,
   iter0_label = NULL,
   node_size = 25,
   node_spacing = 1.2,
@@ -28,11 +29,13 @@ plot_flowchart(
 
 \item{iter_label}{header prefix, e.g. "Iteration"}
 
-\item{best_label}{legend label for best-of-iteration nodes}
+\item{best_label}{legend label for best-of-iteration nodes (default: "Best of iteration"; for a backward chart "Worst of iteration : dropped")}
 
-\item{sig_label}{legend label for significant nodes; "Not <sig_label>" auto-derived}
+\item{sig_label}{legend label for significant nodes. The level of the test is added after it, "Significant" giving "Significant (LRT p < 0.01)"; write \code{\{alpha\}} in the label to choose where it goes. Default: "Significant"; for a backward chart "Significant (LRT p < \{alpha\}) : kept"}
 
-\item{base_label}{label displayed inside the base/full model node}
+\item{not_sig_label}{legend label for the non-significant nodes (default: "Not <sig_label>"; for a backward chart "Not significant")}
+
+\item{base_label}{label displayed inside the base/full model node (default: "Base model (no covariates)"; for a backward chart "Full model (all covariates)")}
 
 \item{iter0_label}{header of the first column (default: "Full model" for a backward chart, "Base" otherwise)}
 
@@ -40,7 +43,7 @@ plot_flowchart(
 
 \item{node_spacing}{vertical spacing multiplier between nodes (default 1.2)}
 
-\item{colors}{named list with one sub-list per category (base, best, sig, not_sig) and an arrow sub-list. Each category accepts: fill, border, font. Arrow accepts: best, sig, not_sig.}
+\item{colors}{named list with one sub-list per category (base, best, sig, not_sig). Each category accepts: fill, border, font, and arrow (the colour of the arrows reaching those nodes). The default is the forward palette (best = green); a backward chart drawn with the default colours uses the palette of `colors_backward` in [plot_flowchart_combined()] instead (kept = grey, dropped = red). Change one category with e.g. `modifyList(eval(formals(plot_flowchart)$colors), list(best = list(fill = "palegreen3")))`.}
 }
 \description{
 Renders forward SCM or backward elimination flowchart using ggraph

@@ -1,4 +1,4 @@
-test_that("run_diagnostics names the report after the model and writes it where asked", {
+test_that("run_diagnostics names the report `<model>_report.html`, after the model, and writes it where asked", {
   skip_if_not(rmarkdown::pandoc_available(), "pandoc not available")
   fixture <- normalizePath(test_path("fixtures", "summary_warfarin_final.txt"))   # before changing directory
   dir <- withr::local_tempdir(); withr::local_dir(dir)
@@ -10,11 +10,11 @@ test_that("run_diagnostics names the report after the model and writes it where 
   quiet <- function(...) suppressWarnings(suppressMessages(run_diagnostics(..., workflow = "stub.Rmd")))
 
   quiet("models/warfarin_final")
-  expect_true(file.exists("warfarin_final_stub.html"))                        # model name, not a generic name
+  expect_true(file.exists("warfarin_final_report.html"))                        # model name, not a generic name
   quiet("models/warfarin_final", knit_dir = "reports", knit_prefix = "custom")
-  expect_true(file.exists("reports/custom_stub.html"))
+  expect_true(file.exists("reports/custom_report.html"))
   quiet("models/warfarin_final", prefix = "PFX")
-  expect_true(file.exists("PFX_stub.html"))
+  expect_true(file.exists("PFX_report.html"))
   expect_error(run_diagnostics("models/zzz", workflow = "stub.Rmd"), "model_dir not found")
   expect_error(run_diagnostics("models/warfarin_final", workflow = "no_such_template"), "template not found")
 })

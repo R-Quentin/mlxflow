@@ -93,3 +93,16 @@ test_that("a failing diagnostic callback never stops the run", {
   expect_true(any(grepl("diagnostic_fun failed", warns)))
   expect_true(nrow(res$history) > 1)
 })
+
+test_that("a scenario is used for every model and the Wald step reuses the standard errors it computed", {
+  out <- withr::local_tempdir()
+  sc <- list(tasks = c(populationParameterEstimation = TRUE, conditionalDistributionSampling = TRUE,
+                       logLikelihoodEstimation = TRUE, standardErrorEstimation = TRUE), linearization = FALSE)
+  res <- run_backward(out, fast_screening = FALSE, scenario = sc)
+  n_scenario_runs <- fk$eng$scenario_runs
+  plain <- run_backward(withr::local_tempdir(), fast_screening = FALSE)
+  expect_equal(history_ids(res), history_ids(plain))                    # same decisions as the default chain
+  expect_equal(n_scenario_runs, nrow(read.table(file.path(out, "backward_log.csv"), sep = ";", header = TRUE)))
+  bad <- sc; bad$tasks[["populationParameterEstimation"]] <- FALSE
+  expect_error(run_backward(withr::local_tempdir(), scenario = bad), "must enable: populationParameterEstimation")
+})

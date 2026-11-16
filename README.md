@@ -7,7 +7,7 @@ Model building and diagnostics workflow for population PK models run with
 > Simulations Plus. "Monolix" is their trademark; the `mlx` prefix only says that
 > the package works on Monolix files.
 
-Work in progress: version `0.0.1`.
+Work in progress: version `0.0.2`.
 
 ## What it does
 
@@ -51,8 +51,8 @@ run_diagnostics("warfarin_final", output_dir = "warfarin_final/Diagnostics", sav
 run_comparison("warfarin_example", "warfarin_final", label_1 = "Base", label_2 = "Final")
 ```
 
-A complete walk-through on the Monolix warfarin demo is in `inst/tutorials/warfarin_tutorial.R`
-(`system.file("tutorials", "warfarin_tutorial.R", package = "mlxflow")`).
+A complete walk-through on the Monolix warfarin demo is in `inst/tutorials/mlxflow_tutorial.R`
+(`system.file("tutorials", "mlxflow_tutorial.R", package = "mlxflow")`).
 
 Backward runs write one folder and one project per model, named
 `run<NNN>_I<k>_<parameter>_<covariate>`: `NNN` is a run number that is never reused (like

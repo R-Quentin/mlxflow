@@ -12,11 +12,13 @@ plot_flowchart_combined(
   forward_base_label = "Base model\\n(no covariates)",
   forward_sig_label = "Significant",
   forward_best_label = "Best of iteration",
+  forward_not_sig_label = NULL,
   backward_title = "Backward deletion",
   backward_iter_label = "Iteration",
   backward_base_label = "Full model\\n(all covariates)",
-  backward_sig_label = "Kept",
-  backward_best_label = "Dropped (worst)",
+  backward_sig_label = "Significant (LRT p < {alpha}) : kept",
+  backward_not_sig_label = "Not significant",
+  backward_best_label = "Worst of iteration : dropped",
   node_size = 25,
   node_spacing = 1.2,
   colors_forward = list(base = list(fill = "lightblue", border = "steelblue4", font =
@@ -25,10 +27,10 @@ plot_flowchart_combined(
     "gray80"), best = list(fill = "green4", border = "darkgreen", font = "white", arrow =
     "darkgreen")),
   colors_backward = list(base = list(fill = "lightgreen", border = "darkgreen", font =
-    "black"), sig = list(fill = "lightyellow", border = "gray30", font = "black", arrow =
-    "black"), not_sig = list(fill = "brown3", border = "gray30", font = "black", arrow =
-    "gray40"), best = list(fill = "steelblue", border = "steelblue4", font = "white",
-    arrow = "steelblue")),
+    "black"), sig = list(fill = "gray90", border = "gray30", font = "grey30", arrow =
+    "gray80"), not_sig = list(fill = "white", border = "brown4", font = "black", arrow =
+    "black"), best = list(fill = "brown3", border = "brown4", font = "white", arrow =
+    "brown3")),
   separator_color = "gray50"
 )
 }
@@ -47,15 +49,19 @@ plot_flowchart_combined(
 
 \item{forward_best_label}{best-of-iter label for forward legend}
 
+\item{forward_not_sig_label}{label of the non-significant forward nodes (default: "Not <forward_sig_label>")}
+
 \item{backward_title}{Title of the backward section.}
 
 \item{backward_iter_label}{header prefix for backward columns (default "Iteration")}
 
 \item{backward_base_label}{text inside the backward full model node}
 
-\item{backward_sig_label}{significance label for backward legend}
+\item{backward_sig_label}{significance label for backward legend; write \code{\{alpha\}} where the level of the test goes (without it, " (LRT p < alpha)" is added after the label, as for the forward legend)}
 
-\item{backward_best_label}{best-of-iter label for backward legend}
+\item{backward_not_sig_label}{label of the non-significant backward nodes (relation that could be removed)}
+
+\item{backward_best_label}{label of the relation removed at each iteration (the least significant one)}
 
 \item{node_size}{ggraph point size (default 25)}
 
@@ -63,7 +69,7 @@ plot_flowchart_combined(
 
 \item{colors_forward}{colors list (same structure as plot_flowchart)}
 
-\item{colors_backward}{colors list for backward phase}
+\item{colors_backward}{colors list for backward phase (same structure as `colors_forward`): kept relations (`sig`) are grey, the relation dropped at each iteration (`best`) is red, the others that were not significant (`not_sig`) are white with a dark red outline}
 
 \item{separator_color}{dashed separator line color}
 }

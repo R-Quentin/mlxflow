@@ -9,6 +9,12 @@ eng <- new.env()
 eng$effects <- list(V_logtWt = c(25.68, 1), Cl_logtWt = c(4.93, 1), V_SEX = c(5.2, 2), Cl_SEX = c(12.0, 2))
 eng$base_ofv <- 600; eng$n_runs <- 0; eng$fail_at_run <- Inf
 eng$project <- NULL; eng$dir <- NULL; eng$cov <- NULL
+# Variability (test_variability): OFV gain and one extra parameter (gamma) per random effect on OCC
+eng$var_effects <- list(ka_OCC = 0.7, V_OCC = 40, Cl_OCC = 9)
+eng$var <- NULL; eng$scenario <- NULL; eng$scenario_runs <- 0
+.default_var <- function() list(id = c(ka = TRUE, V = TRUE, Cl = TRUE), OCC = c(ka = FALSE, V = FALSE, Cl = FALSE))
+.var_flags <- function() { out <- character()
+  for (l in names(eng$var)) for (p in names(eng$var[[l]])) if (eng$var[[l]][[p]]) out <- c(out, paste(p, l, sep = "_")); out }
 
 .rel_flags <- function() { out <- list(); for (p in names(eng$cov)) for (cv in names(eng$cov[[p]]))
   out[[paste(p, cv, sep = "_")]] <- eng$cov[[p]][[cv]]; out }
@@ -18,26 +24,37 @@ eng$project <- NULL; eng$dir <- NULL; eng$cov <- NULL
     nm <- c(nm, if (cv == "SEX") paste0("beta_", p, "_SEX_G_", c("B", "C")) else paste0("beta_", k)) }
   nm }
 .model_ofv <- function() { f <- .rel_flags(); o <- eng$base_ofv
-  for (k in names(f)) if (!f[[k]]) o <- o + eng$effects[[k]][1]; o }
+  for (k in names(f)) if (!f[[k]]) o <- o + eng$effects[[k]][1]
+  for (k in .var_flags()) if (k %in% names(eng$var_effects)) o <- o - eng$var_effects[[k]]; o }
 
 initializeLixoftConnectors <- function(...) invisible(TRUE)
 fake_new_project <- function(path) {
   eng$project <- path; eng$dir <- tools::file_path_sans_ext(path)
   eng$cov <- list(V = c(logtWt = TRUE, SEX = TRUE), Cl = c(logtWt = TRUE, SEX = TRUE))
+  eng$var <- .default_var()
   saveProject(path) }
 saveProject <- function(path) {
   lines <- c(paste0("dir=", eng$dir),
-             unlist(lapply(names(eng$cov), function(p) paste0(p, ":", names(eng$cov[[p]]), "=", eng$cov[[p]]))))
+             unlist(lapply(names(eng$cov), function(p) paste0(p, ":", names(eng$cov[[p]]), "=", eng$cov[[p]]))),
+             unlist(lapply(names(eng$var), function(l) paste0("@var:", l, ":", names(eng$var[[l]]), "=", eng$var[[l]]))))
   dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
   writeLines(lines, path); eng$project <- path; invisible(TRUE) }
 loadProject <- function(path) {
   stopifnot(file.exists(path)); l <- readLines(path)
   eng$dir <- sub("^dir=", "", l[1]); eng$project <- path
-  cov <- list()
-  for (x in l[-1]) { a <- strsplit(x, "[:=]")[[1]]; cov[[a[1]]][a[2]] <- as.logical(a[3]) }
-  eng$cov <- cov; invisible(TRUE) }
+  cov <- list(); var <- list()
+  for (x in l[-1]) { a <- strsplit(x, "[:=]")[[1]]
+    if (a[1] == "@var") var[[a[2]]][a[3]] <- as.logical(a[4]) else cov[[a[1]]][a[2]] <- as.logical(a[3]) }
+  eng$cov <- cov; eng$var <- if (length(var)) var else .default_var(); invisible(TRUE) }
 setProjectSettings <- function(directory) { eng$dir <- directory; invisible(TRUE) }
-getIndividualParameterModel <- function() list(covariateModel = eng$cov)
+getIndividualParameterModel <- function() list(covariateModel = eng$cov, name = c("ka", "V", "Cl"),
+                                               variability = lapply(eng$var, as.list))
+setIndividualParameterVariability <- function(...) { args <- list(...)
+  for (l in names(args)) for (p in names(args[[l]])) eng$var[[l]][[p]] <- args[[l]][[p]]; invisible(TRUE) }
+setInitialEstimatesToLastEstimates <- function(...) invisible(TRUE)
+setScenario <- function(scenario) { eng$scenario <- scenario; invisible(TRUE) }
+runScenario <- function() { eng$scenario_runs <- eng$scenario_runs + 1
+  runPopulationParameterEstimation(); runConditionalDistributionSampling(); runLogLikelihoodEstimation(); invisible(TRUE) }
 setCovariateModel <- function(...) { args <- list(...); for (p in names(args)) eng$cov[[p]] <- args[[p]]; invisible(TRUE) }
 runPopulationParameterEstimation <- function() { eng$n_runs <- eng$n_runs + 1
   if (eng$n_runs >= eng$fail_at_run) stop("simulated crash"); invisible(TRUE) }
@@ -64,7 +81,8 @@ runLogLikelihoodEstimation <- function(linearization = FALSE) {
 getEstimatedLogLikelihood <- function() { o <- .model_ofv()
   list(importanceSampling = c(OFV = o, AIC = o + 10, BICc = o + 50 + 5.5 * length(.beta_names()), BIC = o + 40)) }
 getEstimatedPopulationParameters <- function() {
-  b <- .beta_names(); c(setNames(rep(1, 5 + length(b)), c("V_pop", "Cl_pop", "omega_V", "omega_Cl", "a", b))) }
+  b <- .beta_names(); v <- .var_flags(); v <- v[grepl("_OCC$", v)]; g <- if (length(v)) paste0("gamma_", v) else character()
+  c(setNames(rep(1, 5 + length(b) + length(g)), c("V_pop", "Cl_pop", "omega_V", "omega_Cl", "a", b, g))) }
 runStandardErrorEstimation <- function(linearization = FALSE) {
   f <- file.path(eng$dir, "summary.txt"); b <- .beta_names()
   if (file.exists(f) && length(b)) {
@@ -90,7 +108,7 @@ fake_lx <- function(fn, ...) get(fn, envir = fk)(...)
 new_fake_project <- function(dir = withr::local_tempdir(.local_envir = parent.frame())) {
   path <- file.path(dir, "Full_model.mlxtran")
   fk$fake_new_project(path)
-  fk$eng$n_runs <- 0; fk$eng$fail_at_run <- Inf
+  fk$eng$n_runs <- 0; fk$eng$fail_at_run <- Inf; fk$eng$scenario_runs <- 0
   fk$eng$effects <- list(V_logtWt = c(25.68, 1), Cl_logtWt = c(4.93, 1), V_SEX = c(5.2, 2), Cl_SEX = c(12.0, 2))
   path
 }
