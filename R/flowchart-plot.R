@@ -12,9 +12,12 @@
 # Default legend texts of a flowchart: what the three categories mean depends on the search
 # (forward: significant = the relation improves the model; backward: significant = kept)
 #' @noRd
-.flowchart_labels <- function(type, best_label = NULL, sig_label = NULL, not_sig_label = NULL) {
+.flowchart_labels <- function(type, best_label = NULL, sig_label = NULL, not_sig_label = NULL, adopted = TRUE) {
   backward <- identical(type, "backward")
-  best_label <- best_label %||% if (backward) "Worst of iteration : dropped" else "Best of iteration"
+  best_label <- best_label %||% if (backward) "Worst of iteration : dropped"
+                                else if (identical(type, "variability") && !adopted) "Most significant"
+                                else if (identical(type, "variability")) "Adopted (best of iteration)"
+                                else "Best of iteration"
   sig_label  <- sig_label  %||% if (backward) "Significant (LRT p < {alpha}) : kept" else "Significant"
   not_sig_label <- not_sig_label %||% if (backward) "Not significant" else paste0("Not ", tolower(sig_label))
   list(best = best_label, sig = sig_label, not_sig = not_sig_label)
@@ -28,7 +31,7 @@
 #' @param best_label legend label for best-of-iteration nodes (default: "Best of iteration"; for a backward chart "Worst of iteration : dropped")
 #' @param sig_label legend label for significant nodes. The level of the test is added after it, "Significant" giving "Significant (LRT p < 0.01)"; write \code{\{alpha\}} in the label to choose where it goes. Default: "Significant"; for a backward chart "Significant (LRT p < \{alpha\}) : kept"
 #' @param not_sig_label legend label for the non-significant nodes (default: "Not <sig_label>"; for a backward chart "Not significant")
-#' @param base_label label displayed inside the base/full model node (default: "Base model (no covariates)"; for a backward chart "Full model (all covariates)")
+#' @param base_label label displayed inside the base/full model node (default: "Base model" for a variability test; otherwise "Base model (no covariates)"; for a backward chart "Full model (all covariates)")
 #' @param iter0_label header of the first column (default: "Full model" for a backward chart, "Base" otherwise)
 #' @param node_size size passed to geom_node_point (default 26)
 #' @param node_spacing vertical spacing multiplier between nodes (default 1.2)
@@ -62,9 +65,11 @@ plot_flowchart <- function(
   if (missing(colors) && identical(scm_data$type, "backward")) {
     colors <- eval(formals(plot_flowchart_combined)$colors_backward)
   }
-  legend_text <- .flowchart_labels(scm_data$type, best_label, sig_label, not_sig_label)
+  legend_text <- .flowchart_labels(scm_data$type, best_label, sig_label, not_sig_label, adopted = scm_data$adopted %||% TRUE)
   if (is.null(base_label)) {
-    base_label <- if (identical(scm_data$type, "backward")) "Full model\n(all covariates)" else "Base model\n(no covariates)"
+    base_label <- if (identical(scm_data$type, "backward")) "Full model\n(all covariates)"
+                  else if (identical(scm_data$type, "variability")) "Base model"
+                  else "Base model\n(no covariates)"
   }
 
   g <- igraph::graph_from_data_frame(

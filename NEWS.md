@@ -1,8 +1,35 @@
-# mlxflow 0.0.0.9000
+# mlxflow 0.1.0
 
 First assembly of the package from three scripts (engine, readers/diagnostics, flowcharts).
 
-## Changes (this round)
+## Changes (0.1.0)
+
+* The comparison report as `<prefix>_comparison.html` (it was `<prefix>_model_comparison.html`).
+* `test_variability()` can be resumed (`resume = TRUE`): the state is saved after every estimated model
+  (`variability_state.rds`) and the settings of the interrupted run are kept. Like `backward_elimination()`,
+  everything is written in `output_dir`.
+* `test_variability()`: an OFV that is not a finite number (`-Inf`, `NaN`: importance sampling that breaks
+  down) is flagged `invalid`, kept in the table and never adopted, instead of stopping the search with an
+  error. `max_rse` requires the new random effect to be well estimated to be adopted (needs a scenario with
+  standard errors), and `prune_alpha` drops, after the first iteration, the parameters that showed nothing
+  against the base model (pre-selection). New columns `rse_new` and `eligible` in the runs table and the log.
+* `build_variability_data()` turns a `test_variability()` result (or its output folder, even for an
+  interrupted run) into the data of `plot_flowchart()`: the flowchart of an IOV / IIV test, with the adopted
+  model of each iteration highlighted and invalid, failed or imprecise models labelled.
+* Charts data (`test_variability()`, `backward_elimination(export_charts = TRUE)`): `computeChartsData()` is
+  called once the project is saved (the charts are only written to a saved project).
+* `read_assessment()` reads the `Assessment` folder written by Monolix (estimates and standard errors of each
+  run, SAEM trajectories when the charts of the runs exist) into the structure of `getAssessmentResults()`.
+  `plot_convergence_assessment()` and `tidy_convergence_assessment()` accept that folder, and
+  `run_diagnostics()` uses `<model_dir>/Assessment` by default when it exists.
+* `compare_obspred_metrics()`: `match_strata = TRUE` compares the strata of one model (Monolix `split`, e.g. by
+  route) with the observed variables of the other (one error model per route: y1 / y2), after renaming them
+  alike with `split_labels` / `y_type_labels`.
+* `kable_param_comparison()` shows absolute changes for the estimates, RSE and shrinkage.
+* `read_covariate_assessment()`, `plot_covariate_search()` and `covariate_tests_table()` read bounded p-values
+  such as `<2.2e-16` in the random effect x covariate tests (the column was text: error in `log10()`).
+
+## Changes (0.0.2)
 
 * `test_variability()` (replaces the tutorial helper `test_IOV()`): tests the addition of a random
   effect on each parameter, at an occasion level (IOV) or at `"id"` (IIV), by LRT. `forward = TRUE`

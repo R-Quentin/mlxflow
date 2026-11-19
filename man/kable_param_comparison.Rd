@@ -7,7 +7,7 @@
 kable_param_comparison(
   data,
   labels = c("Model 1", "Model 2"),
-  change = c(estimate = "rel", rse_pct = "abs", shrinkage = "abs"),
+  change = c(estimate = "abs", rse_pct = "abs", shrinkage = "abs"),
   caption = "Parameter estimates, relative standard errors and shrinkage",
   rse_thresholds = list(high = 100, fe_med = 50, fe_low = 30, re_med = 70, re_low = 50),
   shrink_thresholds = list(high = 100, med = 60, low = 40),
@@ -21,10 +21,9 @@ errors) are left out.}
 
 \item{labels}{Names of the two models in the column headers.}
 
-\item{change}{How the change of each value is shown, `"rel"` (relative, in percent) or
-`"abs"` (absolute difference, in the unit of the value: percentage points for RSE and
-shrinkage). Named by value; default: relative for the estimates, absolute for RSE and
-shrinkage, which are already percentages. The change is always `second - first`.}
+\item{change}{How the change of each value is shown, `"abs"` (absolute difference, in the unit
+of the value: percentage points for RSE and shrinkage) or `"rel"` (relative, in percent). Named
+by value; default: absolute for all three. The change is always `second - first`.}
 
 \item{caption}{Table caption.}
 

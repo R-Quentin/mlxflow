@@ -434,6 +434,11 @@ compare_criteria <- function(first, second, labels = NULL) {
 #' @param split If TRUE (default), keep the strata of the Monolix `split` when both
 #'   models have them: the metrics are then given per stratum. If FALSE, compare the
 #'   metrics of all the observations together.
+#' @param match_strata If TRUE (default), when one model has strata and the other one has
+#'   several observed variables (e.g. a stratification by route in one, one error model per
+#'   route in the other), the observed variables of the latter are compared with the strata of
+#'   the former. The names must then agree: rename them with `y_type_labels` and `split_labels`
+#'   (given as a folder or an [obspred_diagnostics()] output), or beforehand in the table.
 #' @param y_type_labels,split_labels Optional named vectors to rename (and order) the
 #'   observed variables and the strata of the models read from a folder, so that the
 #'   names of the two models agree, e.g. `y_type_labels = c(y1 = "Assay A")`. See
@@ -445,7 +450,7 @@ compare_criteria <- function(first, second, labels = NULL) {
 #'   per model and `delta`. The order of the first model is kept.
 #' @export
 compare_obspred_metrics <- function(first, second, labels = c("Model 1", "Model 2"),
-                                    format = c("wide", "long"), split = TRUE,
+                                    format = c("wide", "long"), split = TRUE, match_strata = TRUE,
                                     y_type_labels = NULL, split_labels = NULL) {
   format <- match.arg(format)
   if (length(labels) != 2) stop("`labels` must hold two names, one per model.", call. = FALSE)
@@ -454,6 +459,21 @@ compare_obspred_metrics <- function(first, second, labels = c("Model 1", "Model 
   src1 <- .metrics_source(first,  split, y_type_labels, split_labels)
   src2 <- .metrics_source(second, split, y_type_labels, split_labels)
   m1 <- src1$metrics; m2 <- src2$metrics
+
+  # Strata in one model, one error model per observed variable in the other (e.g. a stratification
+  # by route against one observed variable y1 / y2 per route): the observed variables are the strata
+  if (split && match_strata) {
+    multi <- function(m) "Y_TYPE" %in% names(m) && dplyr::n_distinct(m$Y_TYPE) > 1
+    if ("split" %in% names(m1) && !"split" %in% names(m2) && multi(m2)) {
+      message("The second model has several observed variables and the first has strata: the observed ",
+              "variables of the second are compared with the strata of the first.")
+      m2 <- .y_type_as_split(m2, m1)
+    } else if ("split" %in% names(m2) && !"split" %in% names(m1) && multi(m1)) {
+      message("The first model has several observed variables and the second has strata: the observed ",
+              "variables of the first are compared with the strata of the second.")
+      m1 <- .y_type_as_split(m1, m2)
+    }
+  }
 
   # Only one of the two has strata: pooled metrics for both, if they can be recomputed
   if (split && ("split" %in% names(m1)) != ("split" %in% names(m2))) {
@@ -517,6 +537,17 @@ compare_obspred_metrics <- function(first, second, labels = c("Model 1", "Model 
     dplyr::mutate(Model = as.character(.data$Model))
 }
 
+
+# Observed variables of a model as the strata of another: Y_TYPE becomes `split`, and the
+# observed variable takes the name used by the other model when that one has only one
+#' @noRd
+.y_type_as_split <- function(m, other) {
+  m$split <- m$Y_TYPE
+  single  <- function(k) k %in% names(other) && dplyr::n_distinct(other[[k]]) == 1
+  m$Y_TYPE <- if (single("Y_TYPE")) other$Y_TYPE[1] else "Y"
+  if ("DV" %in% names(m)) m$DV <- if (single("DV")) other$DV[1] else m$Y_TYPE
+  dplyr::relocate(m, dplyr::any_of(c("DV", "Y_TYPE", "split", "Prediction")))
+}
 
 # The metrics table of one model, whatever the way it is given, and whether it can be computed
 # again with another `split`: a model folder (ChartsData must exist there), a read_summary()

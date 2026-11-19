@@ -35,9 +35,10 @@ given, otherwise the model folder name).}
 \item{prefix}{Prefix of the saved plots and tables (default: the model folder name).}
 
 \item{assessment}{Optional convergence assessment, shown as an extra section: the
-object returned by `lixoftConnectors::getAssessmentResults()`, or the path of an
-.rds file holding it. `NULL` (default) leaves the section out. See
-[plot_convergence_assessment()].}
+object returned by `lixoftConnectors::getAssessmentResults()`, the path of an .rds
+file holding it, or an `Assessment` folder written by Monolix (see [read_assessment()]).
+`NULL` (default): the `Assessment` folder of the model (`<model_dir>/Assessment`) is used
+when it exists, otherwise the section is left out. See [plot_convergence_assessment()].}
 }
 \value{
 The path of the html report, invisibly.

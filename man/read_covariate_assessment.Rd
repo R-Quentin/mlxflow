@@ -25,5 +25,5 @@ one model. Neither is DV/Y_TYPE- or split-stratified.
     column sometimes reads "<2.2e-16" rather than a plain number --
     parsed here into a numeric p.value plus a p_bound logical flag
     (TRUE = "p is below this value", FALSE = "this is the exact p.value"),
-    so p.value is always numeric in the returned tibble.
+    so p.value is always numeric in the returned tibble (for both tables).
 }

@@ -57,6 +57,19 @@ test_that("strata in one model only cannot be paired with a metrics table, and u
   expect_warning(compare_obspred_metrics(with_split, other), "one model only.*b")
 })
 
+test_that("strata of one model are compared with the observed variables of the other", {
+  han <- tibble::tibble(DV = "CAB_conc", Y_TYPE = "CAB_conc", split = c("IM", "PO"), Prediction = "P", N = c(296, 1893), MPE = c(40, 70))
+  tho <- tibble::tibble(DV = c("y1", "y2"), Y_TYPE = c("y1", "y2"), Prediction = "P", N = c(296, 1893), MPE = c(45, 60))
+  expect_warning(compare_obspred_metrics(han, tho), "one model only")        # names disagree: said, not hidden
+  tho$Y_TYPE <- tho$DV <- c("IM", "PO")                                    # the user names them alike
+  expect_message(r <- compare_obspred_metrics(han, tho, c("Han", "Thoueille")), "compared with the strata")
+  expect_equal(r$split, rep(c("IM", "PO"), each = 3)); expect_equal(unique(r$Y_TYPE), "CAB_conc")
+  expect_equal(r$MPE[r$Model == "delta"], c(5, -10)); expect_equal(r$N[r$Model == "delta"], c(0, 0))
+  r2 <- suppressMessages(compare_obspred_metrics(tho, han, c("Thoueille", "Han")))   # either order
+  expect_equal(r2$MPE[r2$Model == "delta"], c(-5, 10))
+  expect_error(suppressMessages(compare_obspred_metrics(han, tho, match_strata = FALSE)), "Only one of the two models has strata")
+})
+
 test_that("a single observed variable with different names in the two models is matched", {
   m1 <- tibble::tibble(DV = "CAB_conc", Y_TYPE = "CAB_conc", Prediction = "P", N = 10, MPE = 1)
   m2 <- dplyr::mutate(m1, DV = "y1", Y_TYPE = "y1", MPE = 3)
@@ -149,4 +162,30 @@ test_that("backward_monitor prints one line per adopted model", {
   expect_length(out, 2)
   expect_match(out[1], "iteration 0.*0 relation.*OFV 656.85.*BICc 703.77.*shrinkage .*!")   # Tlag shrinkage 50 percent
   expect_match(out[2], "iteration 1.*1 relation.*OFV 631.10.*change -22\\.3")
+})
+
+test_that("a stratified model and a model with one error model per route are compared from their folders", {
+  # ObservationsVsPredictions as Monolix writes them: one stratified file, or one file per observed variable
+  write_obspred <- function(root, name, id, y, split, y_col = name) {
+    d <- file.path(root, "ChartsData", "ObservationsVsPredictions"); dir.create(d, recursive = TRUE, showWarnings = FALSE)
+    n <- length(y); pred <- y * 1.1 + 5
+    df <- data.frame(ID = id, Admin = 1, time = seq_len(n), y, popPred = pred, indivPredMean = y * 1.02, indivPredMode = y * 1.01,
+                     censored = 0, split = split, color = "#4682B4", filter = 0)
+    names(df)[4] <- y_col
+    utils::write.csv(df, file.path(d, paste0(name, "_obsVsPred.txt")), row.names = FALSE, quote = FALSE)
+    utils::write.csv(data.frame(popPred_spline_abscissa = 1, popPred_spline = 1, popPred_ci_abscissa = 1, popPred_piLower = 1,
+                                popPred_piUpper = 1, indivPred_spline_abscissa = 1, indivPred_spline = 1, indivPred_ci_abscissa = 1,
+                                indivPred_piLower = 1, indivPred_piUpper = 1, split = split[1]),
+                     file.path(d, paste0(name, "_visualGuides.txt")), row.names = FALSE, quote = FALSE)
+  }
+  root <- withr::local_tempdir(); han <- file.path(root, "Han"); tho <- file.path(root, "Thoueille")
+  y1 <- c(10, 20, 30, 45, 50); y2 <- c(100, 150, 90, 120, 80, 60, 70)
+  write_obspred(han, "CAB_conc", 1:12, c(y1, y2), c(rep("#OCC_Route:1", 5), rep("#OCC_Route:2", 7)))
+  write_obspred(tho, "y1", 1:5, y1, "All"); write_obspred(tho, "y2", 6:12, y2, "All")
+  quiet <- function(...) suppressMessages(suppressWarnings(compare_obspred_metrics(han, tho, labels = c("Han", "Tho"), ...)))
+  expect_warning(suppressMessages(compare_obspred_metrics(han, tho)), "one model only")        # names disagree: said
+  r <- quiet(split_labels = c("#OCC_Route:1" = "Route 1", "#OCC_Route:2" = "Route 2"), y_type_labels = c(y1 = "Route 1", y2 = "Route 2"))
+  expect_equal(r$split, rep(c("Route 1", "Route 2"), each = 6))
+  expect_equal(r$N[r$Model == "Han"], rep(c(5, 7), each = 2)); expect_equal(r$N[r$Model == "delta"], rep(0, 4))
+  expect_false(anyNA(r$MPE))
 })

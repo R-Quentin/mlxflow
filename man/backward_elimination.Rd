@@ -79,7 +79,8 @@ from the folders then only shows the adopted path
 (backward_log.csv still holds every candidate)}
 
 \item{export_charts}{if TRUE, calls .lx("computeChartsData") (VPC, scatter
-plots, ...) before saving - .lx("saveProject") alone
+plots, ...) once the project is saved -
+.lx("saveProject") alone
 only writes the numeric tables (summary.txt,
 populationParameters.txt, ...), not the charts.
 Adds computation time, especially combined with

@@ -146,6 +146,112 @@ build_scm_data <- function(models_df, alpha) {
 
 
 
+
+    ### ---- MODULE 3f: build_variability_data() ---
+
+#' Build the data of the flowchart of a variability test (IOV / IIV)
+#'
+#' Turns the result of [test_variability()] into the structure drawn by [plot_flowchart()],
+#' like [build_scm_data()] does for a covariate search: one column per iteration, one node per
+#' tested model (the random effect added to the model it derives from), its OFV change and
+#' whether it is significant.
+#'
+#' With `forward = TRUE`, the highlighted node of each iteration is the one that was adopted and
+#' the arrows start from it. With a single pass (`forward = FALSE`), every model derives from the
+#' base model and the highlighted node is the most significant one (nothing is adopted). A model
+#' that failed or whose OFV is not a finite number is drawn as not significant and labelled so; a
+#' significant model that was not adopted because its new variance is poorly estimated (`max_rse`)
+#' shows the RSE in its label.
+#'
+#' @param x The result of [test_variability()], its `runs` table, or the folder of the run
+#'   (its `variability_state.rds` is read, which also works for a run that was interrupted).
+#' @param alpha Level of the LRT drawn in the legend. Taken from the result or the folder; needed
+#'   only when `x` is the `runs` table.
+#'
+#' @return A list for [plot_flowchart()]: `nodes`, `edges`, `alpha`, `type`, `last_best_name`.
+#' @examples
+#' \dontrun{
+#' res <- test_variability("model.mlxtran", "model/IOV_test", level = "OCC", forward = TRUE)
+#' plot_flowchart(build_variability_data(res), title = "IOV forward selection")
+#' plot_flowchart(build_variability_data("model/IOV_test"))   # from the folder
+#' }
+#' @export
+build_variability_data <- function(x, alpha = NULL) {
+  forward <- NULL
+  if (is.character(x) && length(x) == 1) {
+    state_file <- file.path(x, "variability_state.rds")
+    if (!file.exists(state_file)) {
+      stop("No variability_state.rds in ", x, ": give the output folder of test_variability().", call. = FALSE)
+    }
+    st <- readRDS(state_file)
+    x  <- if (isTRUE(st$finished)) st$result else
+      list(runs = variability_runs_table(st$base_row, st$cands, st$adopted), settings = st$settings)
+  }
+  if (is.list(x) && !is.data.frame(x) && !is.null(x$runs)) {
+    alpha   <- alpha %||% x$settings$alpha
+    forward <- x$settings$forward
+    runs    <- x$runs
+  } else if (is.data.frame(x)) {
+    runs <- x
+  } else stop("`x` must be the result of test_variability(), its `runs` table or its output folder.", call. = FALSE)
+  if (is.null(alpha) || is.na(alpha)) stop("`alpha` is required: use the level of the test_variability() run.", call. = FALSE)
+  if (is.null(forward)) forward <- any(runs$adopted %in% TRUE)
+  runs <- tibble::as_tibble(runs)
+
+  base_id <- runs$run[which(runs$iter == 0)[1]]
+  tested  <- runs[runs$iter > 0, , drop = FALSE]
+  eligible <- function(d) d$eligible %in% TRUE
+  # highlighted: the adopted model of each iteration; for a single pass, the most significant one
+  best_runs <- if (forward) {
+    tested$run[tested$adopted %in% TRUE]
+  } else {
+    ok <- tested[eligible(tested), , drop = FALSE]
+    if (nrow(ok) > 0) ok$run[which.min(ok$p_value)] else integer()
+  }
+
+  label <- function(r) {
+    out <- paste0("+", r$parameter)
+    out[r$status != "ok" & !is.na(r$status)] <- paste0(out[r$status != "ok" & !is.na(r$status)],
+                                                       ifelse(startsWith(r$status[r$status != "ok" & !is.na(r$status)], "error"), "\n(failed)", "\n(invalid)"))
+    poor <- r$significant %in% TRUE & !eligible(r) & is.finite(r$rse_new)
+    out[poor] <- paste0(out[poor], "\n(RSE ", round(r$rse_new[poor]), "%)")
+    out
+  }
+  nodes <- runs |>
+    dplyr::mutate(
+      model_id    = as.integer(run),
+      model_name  = tools::file_path_sans_ext(project),
+      iter        = as.integer(iter),
+      OFV         = ofv,
+      BICc        = bicc,
+      added_cov   = ifelse(iter == 0, "Base model", label(runs)),
+      delta_OFV   = delta_ofv,
+      significant = significant %in% TRUE,
+      is_best     = run %in% best_runs
+    ) |>
+    dplyr::select(model_id, model_name, iter, OFV, BICc, parameter, added_cov, delta_OFV, df, p_value,
+                  significant, eligible, rse_new, status, is_best) |>
+    dplyr::arrange(iter, model_id)
+
+  # The parent of an iteration is the adopted model of the previous one (the base model at first)
+  parent_of <- function(k) {
+    if (k == 1 || !forward) return(base_id)
+    prev <- nodes$model_id[nodes$iter == k - 1 & nodes$is_best]
+    if (length(prev) == 0) NA_integer_ else prev[1]
+  }
+  edges <- dplyr::bind_rows(lapply(sort(unique(nodes$iter[nodes$iter > 0])), function(k) {
+    from <- parent_of(k)
+    to   <- nodes$model_id[nodes$iter == k]
+    if (is.na(from)) tibble::tibble(from = integer(), to = integer()) else tibble::tibble(from = as.integer(from), to = to)
+  }))
+
+  last_best <- nodes[nodes$is_best, , drop = FALSE]
+  last_best_name <- if (nrow(last_best) > 0) last_best$model_name[which.max(last_best$iter)] else nodes$model_name[nodes$iter == 0]
+  list(nodes = nodes, edges = edges, alpha = alpha, type = "variability", adopted = forward,
+       last_best_name = last_best_name)
+}
+
+
     ### ---- MODULE 3e: read_model_building_report() / get_monolix_best_model() ---
 #' Read the model building report written by Monolix
 #'

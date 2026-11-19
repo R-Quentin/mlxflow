@@ -11,7 +11,8 @@ eng$base_ofv <- 600; eng$n_runs <- 0; eng$fail_at_run <- Inf
 eng$project <- NULL; eng$dir <- NULL; eng$cov <- NULL
 # Variability (test_variability): OFV gain and one extra parameter (gamma) per random effect on OCC
 eng$var_effects <- list(ka_OCC = 0.7, V_OCC = 40, Cl_OCC = 9)
-eng$var <- NULL; eng$scenario <- NULL; eng$scenario_runs <- 0
+eng$gamma_rse <- list(ka_OCC = 30, V_OCC = 20, Cl_OCC = 150)   # RSE (%) of the new gamma
+eng$var <- NULL; eng$scenario <- NULL; eng$scenario_runs <- 0; eng$fail_interrupt <- FALSE
 .default_var <- function() list(id = c(ka = TRUE, V = TRUE, Cl = TRUE), OCC = c(ka = FALSE, V = FALSE, Cl = FALSE))
 .var_flags <- function() { out <- character()
   for (l in names(eng$var)) for (p in names(eng$var[[l]])) if (eng$var[[l]][[p]]) out <- c(out, paste(p, l, sep = "_")); out }
@@ -33,7 +34,7 @@ fake_new_project <- function(path) {
   eng$cov <- list(V = c(logtWt = TRUE, SEX = TRUE), Cl = c(logtWt = TRUE, SEX = TRUE))
   eng$var <- .default_var()
   saveProject(path) }
-saveProject <- function(path) {
+saveProject <- function(path = eng$project) {
   lines <- c(paste0("dir=", eng$dir),
              unlist(lapply(names(eng$cov), function(p) paste0(p, ":", names(eng$cov[[p]]), "=", eng$cov[[p]]))),
              unlist(lapply(names(eng$var), function(l) paste0("@var:", l, ":", names(eng$var[[l]]), "=", eng$var[[l]]))))
@@ -57,7 +58,11 @@ runScenario <- function() { eng$scenario_runs <- eng$scenario_runs + 1
   runPopulationParameterEstimation(); runConditionalDistributionSampling(); runLogLikelihoodEstimation(); invisible(TRUE) }
 setCovariateModel <- function(...) { args <- list(...); for (p in names(args)) eng$cov[[p]] <- args[[p]]; invisible(TRUE) }
 runPopulationParameterEstimation <- function() { eng$n_runs <- eng$n_runs + 1
-  if (eng$n_runs >= eng$fail_at_run) stop("simulated crash"); invisible(TRUE) }
+  if (eng$n_runs >= eng$fail_at_run) {
+    # an interruption (Ctrl-C, R crash) is not an error: nothing catches it, the run just stops
+    stop(if (isTRUE(eng$fail_interrupt)) structure(class = c("interrupt", "condition"), list(message = "interrupted", call = NULL))
+         else "simulated crash") }
+  invisible(TRUE) }
 runConditionalDistributionSampling <- function() invisible(TRUE)
 runLogLikelihoodEstimation <- function(linearization = FALSE) {
   dir.create(eng$dir, showWarnings = FALSE, recursive = TRUE); o <- .model_ofv()
@@ -97,7 +102,9 @@ getEstimatedStandardErrors <- function() {
   b <- .beta_names(); se <- vapply(b, function(x) {
     parts <- strsplit(x, "_")[[1]]; k <- paste(parts[2], parts[3], sep = "_"); e <- eng$effects[[k]]
     1 / sqrt(e[1] / e[2]) }, numeric(1))
-  list(stochasticApproximation = data.frame(parameter = b, se = unname(se), rse = 100 * unname(se))) }
+  g <- .var_flags(); g <- g[grepl("_OCC$", g)]
+  list(stochasticApproximation = data.frame(parameter = c(b, if (length(g)) paste0("gamma_", g)), se = c(unname(se), rep(1, length(g))),
+                                            rse = c(100 * unname(se), unname(unlist(eng$gamma_rse[g]))))) }
 computeChartsData <- function() invisible(TRUE)
 
 }, envir = fk)
@@ -108,7 +115,7 @@ fake_lx <- function(fn, ...) get(fn, envir = fk)(...)
 new_fake_project <- function(dir = withr::local_tempdir(.local_envir = parent.frame())) {
   path <- file.path(dir, "Full_model.mlxtran")
   fk$fake_new_project(path)
-  fk$eng$n_runs <- 0; fk$eng$fail_at_run <- Inf; fk$eng$scenario_runs <- 0
+  fk$eng$n_runs <- 0; fk$eng$fail_at_run <- Inf; fk$eng$scenario_runs <- 0; fk$eng$fail_interrupt <- FALSE
   fk$eng$effects <- list(V_logtWt = c(25.68, 1), Cl_logtWt = c(4.93, 1), V_SEX = c(5.2, 2), Cl_SEX = c(12.0, 2))
   path
 }

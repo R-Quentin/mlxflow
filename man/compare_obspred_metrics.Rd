@@ -10,6 +10,7 @@ compare_obspred_metrics(
   labels = c("Model 1", "Model 2"),
   format = c("wide", "long"),
   split = TRUE,
+  match_strata = TRUE,
   y_type_labels = NULL,
   split_labels = NULL
 )
@@ -28,6 +29,12 @@ one row per metric, one column per model.}
 \item{split}{If TRUE (default), keep the strata of the Monolix `split` when both
 models have them: the metrics are then given per stratum. If FALSE, compare the
 metrics of all the observations together.}
+
+\item{match_strata}{If TRUE (default), when one model has strata and the other one has
+several observed variables (e.g. a stratification by route in one, one error model per
+route in the other), the observed variables of the latter are compared with the strata of
+the former. The names must then agree: rename them with `y_type_labels` and `split_labels`
+(given as a folder or an [obspred_diagnostics()] output), or beforehand in the table.}
 
 \item{y_type_labels, split_labels}{Optional named vectors to rename (and order) the
 observed variables and the strata of the models read from a folder, so that the

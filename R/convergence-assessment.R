@@ -11,7 +11,8 @@
 #' 95 percent interval when available).
 #'
 #' @param results The object returned by `lixoftConnectors::getAssessmentResults()`
-#'   (one element per run), or the path of an .rds file holding it.
+#'   (one element per run), the path of an .rds file holding it, or the `Assessment` folder
+#'   written by Monolix (see [read_assessment()]).
 #'
 #' @return A list with `iterations` (tibble: `run`, `iteration`, `parameter`,
 #'   `value`) and `final` (tibble: `run`, `parameter`, `estimate`, `se`, `ymin`, `ymax`).
@@ -42,7 +43,8 @@ tidy_convergence_assessment <- function(results) {
     last <- last[nrow(last), setdiff(names(last), "convergenceIndicator"), drop = FALSE]
     out  <- tibble::tibble(parameter = names(last), estimate = as.numeric(unlist(last)))
     se   <- res$standardErrors$values
-    out$se  <- if (length(se) == nrow(out)) as.numeric(se) else NA_real_
+    out$se  <- if (!is.null(names(se))) as.numeric(se[out$parameter])            # read from a folder: by name
+               else if (length(se) == nrow(out)) as.numeric(se) else NA_real_
     out$run <- factor(idx, levels = run_levels)
     out
   }) |>
@@ -63,7 +65,8 @@ tidy_convergence_assessment <- function(results) {
 #' parameter in each run: the points should line up.
 #'
 #' @param results The object returned by `lixoftConnectors::getAssessmentResults()`
-#'   (one element per run), or the path of an .rds file holding it.
+#'   (one element per run), the path of an .rds file holding it, or the `Assessment` folder
+#'   written by Monolix (see [read_assessment()]).
 #' @param which `"iterations"` (default) or `"estimates"`.
 #' @param ci If TRUE, the final estimates are drawn with their 95 percent
 #'   interval (when standard errors are available). Only used for `"estimates"`.
@@ -77,6 +80,11 @@ plot_convergence_assessment <- function(results, which = c("iterations", "estima
   tidy  <- tidy_convergence_assessment(results)
 
   if (which == "iterations") {
+    if (dplyr::n_distinct(tidy$iterations$iteration) < 2) {
+      stop("The assessment holds the final estimates only, no SAEM trajectories: they are read from ",
+           "ChartsData/Saem/CvParam.txt of each run (compute the charts of the runs), or use the ",
+           "output of getAssessmentResults(). Use which = \"estimates\".", call. = FALSE)
+    }
     ggplot2::ggplot(tidy$iterations, ggplot2::aes(x = iteration, y = value, color = run)) +
       ggplot2::geom_line(alpha = 0.7, linewidth = 0.6) +
       ggplot2::facet_wrap(~ parameter, scales = "free_y") +
@@ -100,12 +108,111 @@ plot_convergence_assessment <- function(results, which = c("iterations", "estima
 #' @noRd
 .read_assessment <- function(x) {
   if (is.character(x) && length(x) == 1) {
-    if (!file.exists(x)) stop("File not found: ", x, call. = FALSE)
-    x <- readRDS(x)
+    if (dir.exists(x)) {
+      x <- read_assessment(x)
+    } else {
+      if (!file.exists(x)) stop("File or folder not found: ", x, call. = FALSE)
+      x <- readRDS(x)
+    }
   }
   if (!is.list(x) || length(x) == 0) {
     stop("`results` must be the output of getAssessmentResults() (a list with one element per run) ",
          "or the path of an .rds file holding it.", call. = FALSE)
   }
   x
+}
+
+#' Read the results of a convergence assessment from the folder Monolix wrote
+#'
+#' A convergence assessment run from Monolix (GUI or `runAssessment()`) leaves an `Assessment`
+#' folder with one sub-folder per run (`Assessment_001`, ...) and an `assessment.txt` that gathers
+#' the final estimates. This reads that folder into the same structure as
+#' `lixoftConnectors::getAssessmentResults()`, so the results can be plotted
+#' ([plot_convergence_assessment()]) or included in [run_diagnostics()] without keeping the R object.
+#'
+#' What each run gives: its estimates and standard errors (`populationParameters.txt`), its
+#' likelihood criteria when computed (`LogLikelihood/logLikelihood.txt`) and its SAEM trajectory
+#' when the charts data of the run exist (`ChartsData/Saem/CvParam.txt`). Without the trajectories
+#' only the final estimates are available (the `"iterations"` plot is then not possible). If the
+#' run folders are missing, `assessment.txt` is used (final estimates only, no standard errors).
+#'
+#' @param assessment_dir The `Assessment` folder (e.g. `file.path(model_dir, "Assessment")`).
+#'
+#' @return A list with one element per run, laid out like the output of
+#'   `getAssessmentResults()` (`populationParameters$convergence`, `standardErrors`,
+#'   `loglikelihood`). The attribute `"trajectories"` tells whether the SAEM iterations are there.
+#' @examples
+#' \dontrun{
+#' res <- read_assessment("warfarin_final/Assessment")
+#' plot_convergence_assessment(res, which = "estimates", ci = TRUE)
+#' }
+#' @export
+read_assessment <- function(assessment_dir) {
+  if (!dir.exists(assessment_dir)) stop("Assessment folder not found: ", assessment_dir, call. = FALSE)
+
+  pop_files <- list.files(assessment_dir, pattern = "^populationParameters\\.txt$", recursive = TRUE, full.names = TRUE)
+  pop_files <- pop_files[!grepl("\\.Internals", pop_files)]
+  run_no    <- suppressWarnings(as.integer(sub(".*Assessment_([0-9]+).*", "\\1", pop_files)))
+  pop_files <- pop_files[order(run_no, pop_files)]
+
+  runs <- if (length(pop_files) > 0) {
+    lapply(pop_files, .read_assessment_run)
+  } else {
+    .read_assessment_summary(file.path(assessment_dir, "assessment.txt"))
+  }
+  attr(runs, "trajectories") <- any(vapply(runs, function(r) nrow(r$populationParameters$convergence) > 1, logical(1)))
+  runs
+}
+
+# One run: the folder that holds its populationParameters.txt
+#' @noRd
+.read_assessment_run <- function(pop_file) {
+  run_dir <- dirname(pop_file)
+  pop <- utils::read.csv(pop_file, stringsAsFactors = FALSE, check.names = FALSE)
+  se_col <- intersect(c("se_sa", "se_lin"), names(pop))
+  se_col <- se_col[vapply(se_col, function(k) any(!is.na(pop[[k]])), logical(1))][1]
+
+  # SAEM trajectory when the charts exist, otherwise the final estimates as a single row
+  cv_file <- file.path(run_dir, "ChartsData", "Saem", "CvParam.txt")
+  if (file.exists(cv_file)) {
+    cv <- utils::read.csv(cv_file, stringsAsFactors = FALSE, check.names = FALSE)
+    conv <- cv[, setdiff(names(cv), c("iteration", "phase")), drop = FALSE]
+    n_expl <- sum(cv$phase == 1); n_smooth <- sum(cv$phase == 2)
+  } else {
+    conv <- as.data.frame(as.list(stats::setNames(pop$value, pop$parameter)), check.names = FALSE)
+    conv <- cbind(convergenceIndicator = NA_real_, conv)
+    n_expl <- n_smooth <- NA_real_
+  }
+
+  ll_file <- file.path(run_dir, "LogLikelihood", "logLikelihood.txt")
+  ll <- if (file.exists(ll_file)) {
+    x <- utils::read.csv(ll_file, stringsAsFactors = FALSE)
+    stats::setNames(as.list(x[[2]]), x[[1]])
+  } else list()
+  ll$method <- if (file.exists(ll_file)) names(utils::read.csv(ll_file, nrows = 1))[2] else NA_character_
+
+  list(
+    populationParameters = list(nbexploratoryiterations = n_expl, nbsmoothingiterations = n_smooth,
+                                convergence = conv),
+    standardErrors = list(method = if (is.na(se_col)) NA_character_
+                                    else c(se_sa = "stochasticApproximation", se_lin = "linearization")[[se_col]],
+                          values = if (is.na(se_col)) stats::setNames(rep(NA_real_, nrow(pop)), pop$parameter)
+                                   else stats::setNames(pop[[se_col]], pop$parameter)),
+    loglikelihood = ll
+  )
+}
+
+# Fallback: assessment.txt (Parameters, Run_1, Run_2, ...), final estimates only
+#' @noRd
+.read_assessment_summary <- function(file) {
+  if (!file.exists(file)) stop("No run folder and no assessment.txt found in the assessment folder.", call. = FALSE)
+  tab <- utils::read.csv(file, stringsAsFactors = FALSE, check.names = FALSE)
+  tab <- tab[!tab[[1]] %in% "-2LL", , drop = FALSE]
+  lapply(names(tab)[-1], function(run) {
+    conv <- as.data.frame(as.list(stats::setNames(tab[[run]], tab[[1]])), check.names = FALSE)
+    list(populationParameters = list(nbexploratoryiterations = NA_real_, nbsmoothingiterations = NA_real_,
+                                     convergence = cbind(convergenceIndicator = NA_real_, conv)),
+         standardErrors = list(method = NA_character_, values = stats::setNames(rep(NA_real_, nrow(tab)), tab[[1]])),
+         loglikelihood = list())
+  })
 }

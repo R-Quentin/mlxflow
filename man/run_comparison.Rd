@@ -53,6 +53,6 @@ NPDE) as paired plots. Covariate effects and convergence are left to
 [run_diagnostics()].
 }
 \details{
-The html report is always written; the standalone tables, plots and .rds
-only if `save_output = TRUE`.
+The html report is always written, as `<knit_prefix>_comparison.html`; the
+standalone tables, plots and .rds only if `save_output = TRUE`.
 }

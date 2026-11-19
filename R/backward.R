@@ -196,12 +196,12 @@ list_backward_outputs <- function(output_dir) {
 #' When resuming: discard what an interrupted iteration left behind (project
 #' files, result folders and log rows of runs after the last completed one)
 #' @noRd
-clean_incomplete_runs <- function(output_dir, last_run) {
+clean_incomplete_runs <- function(output_dir, last_run, log_name = "backward_log.csv") {
   items <- list.files(output_dir, pattern = "^run[0-9]{3}_", full.names = TRUE)
   stale <- items[as.integer(substr(basename(items), 4, 6)) > last_run]
   unlink(stale, recursive = TRUE)
 
-  log_file <- file.path(output_dir, "backward_log.csv")
+  log_file <- file.path(output_dir, log_name)
   if (file.exists(log_file)) {
     old_log <- read.table(log_file, sep = ";", header = TRUE, stringsAsFactors = FALSE)
     write.table(old_log[old_log$run <= last_run, ], log_file, sep = ";", row.names = FALSE)
@@ -438,7 +438,8 @@ test_covariate_removal <- function(parameter, covariate, reference_fit, lineariz
 #'                             from the folders then only shows the adopted path
 #'                             (backward_log.csv still holds every candidate)
 #' @param export_charts       if TRUE, calls .lx("computeChartsData") (VPC, scatter
-#'                             plots, ...) before saving - .lx("saveProject") alone
+#'                             plots, ...) once the project is saved -
+#'                             .lx("saveProject") alone
 #'                             only writes the numeric tables (summary.txt,
 #'                             populationParameters.txt, ...), not the charts.
 #'                             Adds computation time, especially combined with
@@ -532,8 +533,7 @@ backward_elimination <- function(project_file,
     t0 <- Sys.time()
     reference_fit <- run_full_estimation(linearization = linearization, scenario = scenario)
     base_secs <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
-    if (export_charts) .lx("computeChartsData")
-    .lx("saveProject", current_project)
+    save_with_charts(current_project, export_charts)
 
     message(sprintf("  %s fitted in %s: OFV = %.2f, BICc = %.2f",
                     base_name, fmt_duration(base_secs), crit_value(reference_fit, "OFV"),
@@ -617,8 +617,7 @@ backward_elimination <- function(project_file,
         delta_ofv = res$delta_ofv, df = res$df, critical = thresh,
         p_value = res$p_value, significant = res$p_value < alpha))
 
-      if (export_charts) .lx("computeChartsData")
-      .lx("saveProject", cand_path)   # always saved - this is what lets the chosen
+      save_with_charts(cand_path, export_charts)   # always saved - this is what lets the chosen
                                 # candidate become the iteration's official model
                                 # with no separate confirmation refit
 

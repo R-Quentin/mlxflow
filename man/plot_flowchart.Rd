@@ -35,7 +35,7 @@ plot_flowchart(
 
 \item{not_sig_label}{legend label for the non-significant nodes (default: "Not <sig_label>"; for a backward chart "Not significant")}
 
-\item{base_label}{label displayed inside the base/full model node (default: "Base model (no covariates)"; for a backward chart "Full model (all covariates)")}
+\item{base_label}{label displayed inside the base/full model node (default: "Base model" for a variability test; otherwise "Base model (no covariates)"; for a backward chart "Full model (all covariates)")}
 
 \item{iter0_label}{header of the first column (default: "Full model" for a backward chart, "Base" otherwise)}
 

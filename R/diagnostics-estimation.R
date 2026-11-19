@@ -332,6 +332,16 @@ plot_iparam_distribution <- function(model_dir, parameter = NULL, show_shrinkage
 
 
   ## C) Covariate assessment (eta/parameter vs covariate correlation) ----------
+#' p-values as written by Monolix: numbers, or a bound such as "<1e-10" when the test is too
+#' small to be given exactly (the file then makes the column text). Returns the number and
+#' whether it is a bound; anything unreadable becomes NA.
+#' @noRd
+.parse_pvalue <- function(x) {
+  x   <- trimws(as.character(x))
+  num <- suppressWarnings(as.numeric(gsub(",", ".", sub("^<", "", x), fixed = TRUE)))
+  list(p.value = num, p_bound = !is.na(x) & startsWith(x, "<"))
+}
+
 #' read_covariate_assessment(): reads both Tests/*Covariates.txt files for
 #'
 #' one model. Neither is DV/Y_TYPE- or split-stratified.
@@ -347,7 +357,7 @@ plot_iparam_distribution <- function(model_dir, parameter = NULL, show_shrinkage
 #'     column sometimes reads "<2.2e-16" rather than a plain number --
 #'     parsed here into a numeric p.value plus a p_bound logical flag
 #'     (TRUE = "p is below this value", FALSE = "this is the exact p.value"),
-#'     so p.value is always numeric in the returned tibble.
+#'     so p.value is always numeric in the returned tibble (for both tables).
 #'
 #' @param model_dir Monolix results folder of the model (the Tests folder must exist).
 #' @param covariates Optional character vector: keep only these covariates.
@@ -373,7 +383,11 @@ read_covariate_assessment <- function(model_dir, covariates = NULL) {
   
   random_effects <- if (file.exists(re_file)) {
     tryCatch(
-      read.table(re_file, sep = ",", comment.char = "", header = TRUE, stringsAsFactors = FALSE) |> as_tibble(),
+      read.table(re_file, sep = ",", comment.char = "", header = TRUE, stringsAsFactors = FALSE) |>
+        as_tibble() |>
+        mutate(p_bound    = .parse_pvalue(p.value)$p_bound,
+               p.value    = .parse_pvalue(p.value)$p.value,
+               statistics = suppressWarnings(as.numeric(statistics))),
       error = function(e) stop("Failed reading correlationRandomEffectsCovariates.txt: ", conditionMessage(e), call. = FALSE)
     )
   } else NULL
@@ -383,8 +397,8 @@ read_covariate_assessment <- function(model_dir, covariates = NULL) {
     tryCatch(
       read.table(ip_file, sep = ",", comment.char = "", header = TRUE, stringsAsFactors = FALSE) |>
         as_tibble() |>
-        mutate(p_bound = str_starts(p.value, "<"),
-               p.value = as.numeric(str_remove(p.value, "^<"))),
+        mutate(p_bound = .parse_pvalue(p.value)$p_bound,
+               p.value = .parse_pvalue(p.value)$p.value),
       error = function(e) stop("Failed reading correlationIndividualParametersCovariates.txt: ", conditionMessage(e), call. = FALSE)
     )
   } else NULL
@@ -478,6 +492,7 @@ plot_covariate_search <- function(model_dir, covariates = NULL, alpha = 0.05,
   if (!is.null(covariate_labels)) data$covariate <- apply_labels(data$covariate, covariate_labels)
 
   ramp <- grDevices::colorRamp(c("white", fill_colour))
+  if (!"p_bound" %in% names(data)) data$p_bound <- FALSE
   data <- data |>
     mutate(
       neg_log10_p = -log10(pmax(p.value, 1e-300)),
@@ -494,7 +509,8 @@ plot_covariate_search <- function(model_dir, covariates = NULL, alpha = 0.05,
 
   ggplot(data, aes(x = covariate, y = eta, fill = neg_log10_p)) +
     geom_tile(colour = "white") +
-    geom_text(aes(label = signif(p.value, 2), colour = text_colour,
+    geom_text(aes(label = if_else(p_bound, paste0("<", signif(p.value, 2)), as.character(signif(p.value, 2))),
+                  colour = text_colour,
                  fontface = if_else(significant, "bold", "plain")), size = 2.8) +
     scale_colour_identity() +
     scale_fill_gradient(low = "white", high = fill_colour, name = "-log10(p)",
@@ -581,7 +597,8 @@ covariate_tests_table <- function(model_dir, which = c("search", "confirmation",
           p.value >  0.05 & p.value <= 0.10   ~ "#6FAF8A",
           TRUE                                ~ "grey30"
         ),
-        p.value    = format(p.value, scientific = TRUE, digits = 2)
+        p.value    = if_else(p_bound, paste0("<", format(p.value, scientific = TRUE, digits = 2)),
+                             format(p.value, scientific = TRUE, digits = 2))
       ) |>
       select(eta, covariate, statistics, p.value, bold_col, color_col)
 

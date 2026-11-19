@@ -8,7 +8,8 @@ tidy_convergence_assessment(results)
 }
 \arguments{
 \item{results}{The object returned by `lixoftConnectors::getAssessmentResults()`
-(one element per run), or the path of an .rds file holding it.}
+(one element per run), the path of an .rds file holding it, or the `Assessment` folder
+written by Monolix (see [read_assessment()]).}
 }
 \value{
 A list with `iterations` (tibble: `run`, `iteration`, `parameter`,

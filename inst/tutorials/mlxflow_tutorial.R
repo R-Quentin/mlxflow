@@ -65,7 +65,7 @@ saveProject()
 
 # Explore model diagnostics  ===================================================
 
-#' @If not done already, run: loadProject(projectFile = "warfarin_example.mlxtran")
+#' @If not done already, run: loadProject(projectFile = "warfarin_final.mlxtran")
 
   ## Basic diagnostics    ------------------------------------------------------
 
@@ -795,7 +795,7 @@ runAssessment(settings = set)
 AssessmentResults <- getAssessmentResults()
 
 # -> Save the results to keep them with the model (they only exist in the R session otherwise)
-saveRDS(AssessmentResults, "warfarin_example/AssessmentResults.rds")
+saveRDS(AssessmentResults, "warfarin_final/AssessmentResults.rds")
 
 # -> Plots: the lines of the runs should end on the same values
 plot_convergence_assessment(AssessmentResults, which = "iterations")
@@ -818,7 +818,12 @@ convergence_data$final |>
 
 
 # -> It can also be a section of the model report let's re-run diagnostics:
-run_diagnostics("warfarin_example", assessment = "warfarin_example/AssessmentResults.rds")
+# -> The assessment can also be read from the Assessment folder written by Monolix (no .rds needed):
+# AssessmentResults <- read_assessment("warfarin_final/Assessment")
+# plot_convergence_assessment("warfarin_final/Assessment", which = "estimates", ci = TRUE)
+# NB: the "iterations" plot needs the SAEM trajectories (ChartsData/Saem/CvParam.txt of each run)
+# If assessment = NULL, run_diagnostics() uses <model_dir>/Assessment when it exists.
+run_diagnostics("warfarin_final", assessment = "warfarin_final/AssessmentResults.rds")
 
 
 
@@ -837,7 +842,7 @@ run_diagnostics("warfarin_example", assessment = "warfarin_example/AssessmentRes
 #     starting project is never overwritten); variability_log.csv holds every test.
 #   - scenario: same as in backward_elimination() (fast or complete estimation of every model).
 
-  ## Example for tutorial               ----------------------------------------
+  ## IOV Example       ---------------------------------------------------------
 
 # -> Load project
 # We'll use a different example (not the warfarin one) to try IOV implementation
@@ -860,8 +865,7 @@ getIndividualParameterModel()$name
 getIndividualParameterModel()$variability |> names()
 
 
-# -> Run the IOV test
-# Personalized scenario
+# -> Personalized scenario
 fast_scenario <- list(
   tasks = c(
     populationParameterEstimation       = TRUE,
@@ -879,8 +883,8 @@ fast_scenario <- list(
   )
 )
 
-# One pass: IOV on each parameter against the base model
-IOV_res <- test_variability(
+# -> One pass: IOV on each parameter against the base model
+IOV_test <- test_variability(
   project_file = "IOV_example.mlxtran",
   output_dir   = "IOV_example/IOV_test",
   # parameters   = c("ka", "V",  "Cl"), # Default = all
@@ -889,28 +893,35 @@ IOV_res <- test_variability(
   scenario     = fast_scenario
 )
 
-IOV_res$runs            # one row per model: OFV, delta OFV, df, p-value, verdict
-IOV_res$final_project   # = the base model in a single pass: nothing is adopted
-IOV_res |> saveRDS("IOV_example/IOV_test/IOV_res.rds")
-# IOV_res <- read_rds("IOV_example/IOV_test/IOV_res.rds")
+IOV_test$runs            # one row per model: OFV, delta OFV, df, p-value, verdict
+IOV_test$final_project   # = the base model in a single pass: nothing is adopted
+IOV_test |> saveRDS("IOV_example/IOV_test/IOV_test.rds")
+# IOV_test <- read_rds("IOV_example/IOV_test/IOV_test.rds")
 
-# Forward selection: adopt the most significant IOV, then test the others on top of it
-IOV_fwd <- test_variability(
+
+# -> Forward selection: adopt the most significant IOV, then test the others on top of it
+IOV_forward <- test_variability(
   project_file = "IOV_example.mlxtran",
   output_dir   = "IOV_example/IOV_forward",
   level        = "OCC",
   forward      = TRUE,
   alpha        = 0.05,
+  resume       = TRUE,   # safe to launch again after an interruption
   scenario     = fast_scenario
 )
-IOV_fwd$history         # base model, then each IOV added
-IOV_fwd$stop_reason
+IOV_forward$history         # base model, then each IOV added
+IOV_forward$stop_reason
+IOV_forward$final_project
 
-# And IIV (does a parameter need an omega at all?)
-# test_variability("IOV_example.mlxtran", output_dir = "IOV_example/IIV_test", level = "id")
+# -> Flowchart of the search (same plot_flowchart() as for covariates; the data come from the result
+#    or from the output folder, also for a run that was interrupted)
+plot_flowchart(
+  build_variability_data(IOV_forward),     # or build_variability_data("IOV_example/IOV_forward")
+  title = "IOV forward selection - OCC"
+)
 
 
-  ## Check the results         ----------------------------------------------------
+  ## Check the results ---------------------------------------------------------
 
 # -> Check OFV
 IOV_df <- read_models(file.path("IOV_example/IOV_test"), full = FALSE)
@@ -921,7 +932,7 @@ IOV_df |>
     delta_BICc = BICc - BICc[model_id == 0],
   ) |> 
   select(model_name, OFV, delta_OFV, AIC, BIC, BICc, delta_BICc) |> 
-  arrange(OFV) #|> kable() |> kable_styling()
+  arrange(OFV)
 
 
 # -> Check parameters (differences to the base model, the first one)
@@ -934,11 +945,33 @@ IOV_comp <- compare_models(
 IOV_comp
 
 
-# -> Check predictions (adapt the name of the model to compare to the base)
-compare_obspred_metrics(first = "IOV_example/IOV_test/run000_I0_base", second = "IOV_example/IOV_test/run002_I1_V_OCC",
-                        labels = c("Base", "IOV on V"))
+# -> Check predictions
+compare_obspred_metrics(first = "IOV_example/IOV_test/run000_I0_base", second = "IOV_example/IOV_test/run003_I1_Cl_OCC",
+                        labels = c("Base", "IOV on Cl"))
 
 op1 <- obspred_diagnostics("IOV_example/IOV_test/run000_I0_base")
-op2 <- obspred_diagnostics("IOV_example/IOV_test/run002_I1_V_OCC")
+op2 <- obspred_diagnostics("IOV_example/IOV_test/run003_I1_Cl_OCC")
 op1$obspred | op2$obspred
+# Conclusion : IOV doesn't improve the model
+
+
+
+  ## IIV Example       ---------------------------------------------------------
+
+# Can also be used to test IIV : does a parameter need an omega at all?
+
+# -> Load project
+# We'll use a different example (not the warfarin one) to try IOV implementation
+IOV_project <- paste0(getDemoPath(), "/5.models_for_individual_parameters/5.4.inter_occasion_variability/iov3_project.mlxtran")
+loadProject(projectFile = IOV_project)
+
+# Let's remove Inter-Individual Variability for demonstration purposes:
+setIndividualParameterVariability(id = list(ka = FALSE, V = FALSE, Cl = FALSE))
+getIndividualParameterModel()$variability
+
+# Copy in working directory
+saveProject(projectFile = "IIV_example")
+
+test_variability("IIV_example.mlxtran", output_dir = "IIV_example/IIV_test", level = "id")
+
 

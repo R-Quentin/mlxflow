@@ -21,9 +21,10 @@
 #' @param output_dir Folder of the saved plots and tables (default: `model_dir`).
 #' @param prefix Prefix of the saved plots and tables (default: the model folder name).
 #' @param assessment Optional convergence assessment, shown as an extra section: the
-#'   object returned by `lixoftConnectors::getAssessmentResults()`, or the path of an
-#'   .rds file holding it. `NULL` (default) leaves the section out. See
-#'   [plot_convergence_assessment()].
+#'   object returned by `lixoftConnectors::getAssessmentResults()`, the path of an .rds
+#'   file holding it, or an `Assessment` folder written by Monolix (see [read_assessment()]).
+#'   `NULL` (default): the `Assessment` folder of the model (`<model_dir>/Assessment`) is used
+#'   when it exists, otherwise the section is left out. See [plot_convergence_assessment()].
 #'
 #' @return The path of the html report, invisibly.
 #' @export
@@ -55,6 +56,13 @@ run_diagnostics <- function(model_dir,
                  save_output = save_output,
                  output_dir  = if (is.null(output_dir)) "" else output_dir,
                  prefix      = prefix)
+  # Without an explicit assessment, the Assessment folder of the model is used when there is one
+  if (is.null(assessment) && dir.exists(file.path(model_dir, "Assessment")) &&
+      .template_has_param(template, "assessment")) {
+    assessment <- file.path(model_dir, "Assessment")
+    message("Convergence assessment read from ", assessment)
+  }
+  if (is.character(assessment) && length(assessment) == 1) assessment <- normalizePath(assessment, winslash = "/", mustWork = FALSE)
   # Only passed when given: a custom template that does not declare it keeps working
   if (!is.null(assessment)) params$assessment <- assessment
 
@@ -73,8 +81,8 @@ run_diagnostics <- function(model_dir,
 #' NPDE) as paired plots. Covariate effects and convergence are left to
 #' [run_diagnostics()].
 #'
-#' The html report is always written; the standalone tables, plots and .rds
-#' only if `save_output = TRUE`.
+#' The html report is always written, as `<knit_prefix>_comparison.html`; the
+#' standalone tables, plots and .rds only if `save_output = TRUE`.
 #'
 #' @param model_dir_1,model_dir_2 Monolix results folders of the two models
 #'   (the ones holding summary.txt). The plot-based sections need ChartsData
@@ -123,7 +131,7 @@ run_comparison <- function(model_dir_1, model_dir_2,
   output_dir <- normalizePath(output_dir, winslash = "/", mustWork = FALSE)
 
   .render_report(template,
-                 output_file = paste0(knit_prefix, "_", template$name, ".html"),
+                 output_file = paste0(knit_prefix, "_comparison.html"),
                  knit_dir    = knit_dir,
                  params = list(model_dir_1 = model_dir_1, model_dir_2 = model_dir_2,
                                label_1 = label_1, label_2 = label_2,
@@ -131,6 +139,13 @@ run_comparison <- function(model_dir_1, model_dir_2,
                                prefix = if (nzchar(prefix)) prefix else stem))
 }
 
+
+# Does the template declare this parameter in its YAML header?
+#' @noRd
+.template_has_param <- function(template, name) {
+  fm <- tryCatch(rmarkdown::yaml_front_matter(template$path), error = function(e) list())
+  name %in% names(fm$params)
+}
 
 # Template: an existing file is used as is, otherwise a template shipped with the package
 #' @noRd

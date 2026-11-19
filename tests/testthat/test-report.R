@@ -40,10 +40,10 @@ test_that("run_comparison names the report after both models and saves outputs i
   quiet <- function(...) suppressWarnings(suppressMessages(run_comparison("models/m1", "models/m2", workflow = "cmp.Rmd", ...)))
 
   quiet()
-  expect_true(file.exists("m1_vs_m2_cmp.html"))
+  expect_true(file.exists("m1_vs_m2_comparison.html"))
   quiet(label_1 = "Base", label_2 = "Final", knit_dir = "reports")
-  expect_true(file.exists("reports/Base_vs_Final_cmp.html"))
-  html <- paste(readLines("reports/Base_vs_Final_cmp.html"), collapse = " ")
+  expect_true(file.exists("reports/Base_vs_Final_comparison.html"))
+  html <- paste(readLines("reports/Base_vs_Final_comparison.html"), collapse = " ")
   expect_match(html, "Base Final Base_vs_Final_comparison Base_vs_Final")      # labels, output folder, prefix
   expect_error(run_comparison("models/m1", "models/zzz", workflow = "cmp.Rmd"), "model_dir not found")
 })

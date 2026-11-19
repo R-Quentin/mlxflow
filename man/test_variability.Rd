@@ -12,10 +12,13 @@ test_variability(
   alpha = 0.05,
   forward = FALSE,
   max_iter = 10,
+  prune_alpha = NULL,
+  max_rse = NULL,
   scenario = NULL,
   linearization = FALSE,
   warm_start = TRUE,
   export_charts = TRUE,
+  resume = FALSE,
   overwrite = FALSE
 )
 }
@@ -23,7 +26,7 @@ test_variability(
 \item{project_file}{Path of the model (.mlxtran) to start from.}
 
 \item{output_dir}{Folder of the runs. It must not hold the outputs of a previous run
-(see `overwrite`).}
+(see `resume` and `overwrite`).}
 
 \item{parameters}{Parameters to test (names as in the individual model, e.g. `c("ka", "V")`).
 Default: all the parameters of the model. Those that already have a random effect at
@@ -42,6 +45,20 @@ is adopted when `forward = TRUE`; the p-values are given in any case.}
 
 \item{max_iter}{Maximum number of iterations of the forward selection (default 10).}
 
+\item{prune_alpha}{Only with `forward = TRUE`. After the first iteration (every parameter
+against the base model), the parameters whose p-value is not below `prune_alpha` are
+dropped from the next iterations instead of being tested again. This is the pre-selection:
+with 9 parameters and 3 candidates left it takes 9 + 3 + 2 + 1 estimations instead of 9 + 8 + 7 + ...
+Use a value above `alpha` (e.g. 0.1) to be cautious. The risk is to miss an effect that only
+appears once another one is in the model. Default `NULL`: every remaining parameter is tested
+at every iteration.}
+
+\item{max_rse}{Maximum relative standard error (percent) of the new random effect (its
+`gamma_` or `omega_` parameter) for a model to be adopted. A model whose LRT is significant
+but whose new variance is poorly estimated stays in the table (`eligible = FALSE`) and is
+not adopted. It needs the standard errors: use a `scenario` that enables
+`standardErrorEstimation`. Default `NULL`: no condition on the precision.}
+
 \item{scenario}{Optional Monolix scenario (a list as returned by `getScenario()`) used to
 estimate every model, for instance a fast one without standard errors or a complete one
 with all the diagnostics. Default `NULL`: SAEM, conditional distribution sampling and
@@ -51,21 +68,30 @@ scenario must enable.}
 \item{linearization}{If TRUE, the log-likelihood is computed by linearization instead of
 importance sampling. Ignored when `scenario` is given (its `linearization` is used).}
 
-\item{warm_start}{If TRUE (default), each estimation starts from the last estimates of the
-model it derives from instead of the initial values of the project.}
+\item{warm_start}{If TRUE (default), each tested model starts its estimation from the last
+estimates of the model it derives from (the base model, or the last adopted one) instead of
+the initial values of the project. This is not run 0: the base model is always estimated
+once at the start, whatever this argument says.}
 
 \item{export_charts}{If TRUE (default), the charts data (VPC, observations vs predictions,
 ...) of every model are computed and saved, which the diagnostic functions need.
 FALSE saves time.}
+
+\item{resume}{If TRUE and `output_dir` holds an interrupted run, continue it from the last
+estimated model (what an interrupted estimation left behind is discarded). The settings
+of the run (level, parameters, alpha, forward) are those of the interrupted run. If that
+run already finished, its stored result is returned without recomputing.}
 
 \item{overwrite}{If TRUE, delete the outputs of a previous run in `output_dir` (only the
 files and folders created by this function) and start over.}
 }
 \value{
 A list, invisibly: `runs` (one row per estimated model: iteration, parameter, level,
-  OFV, BICc, `delta_ofv` and `p_value` against the reference, `significant`, `adopted`,
-  `status`), `history` (the adopted models, base model first), `final_project` (the model
-  the search ends on: the base model when nothing is adopted) and `stop_reason`.
+  OFV, BICc, `delta_ofv` and `p_value` against the reference, `significant`, `rse_new` (RSE of
+  the new variance), `eligible` (significant and precise enough to be adopted), `adopted`,
+  `status`; a model whose OFV is not a finite number has `status` "invalid" and no test), `history` (the adopted models, base model first), `final_project` (the model
+  the search ends on: the base model when nothing is adopted), `stop_reason` and `settings`
+  (level, alpha, ... of the run). Draw the search with [build_variability_data()] and [plot_flowchart()].
 }
 \description{
 Adds a random effect to one parameter at a time, at one variability level, and compares
@@ -86,11 +112,18 @@ Two ways of searching:
 }
 
 The base model is estimated again first (run 0), so that every OFV comes from the same
-estimation chain. Every model is saved as `run<NNN>_I<k>_<parameter>_<level>.mlxtran`
-with its own result folder (`NNN` is never reused, `k` is the iteration), so the original
-project and its results are left untouched, and each estimation starts from the estimates of the
-model it derives from. `variability_log.csv` holds every test. The folders can be read
-with [read_models()] and compared with [compare_models()] and [compare_obspred_metrics()].
+estimation chain. Like in [backward_elimination()], everything is written in `output_dir`
+(no sub-folder per model to browse): each model is
+`run<NNN>_I<k>_<parameter>_<level>.mlxtran` next to its result folder of the same name
+(`NNN` is never reused, `k` is the iteration), the starting project and its results are left
+untouched, and `variability_log.csv` holds every test. The folders can be read with
+[read_models()] and compared with [compare_models()] and [compare_obspred_metrics()].
+
+An OFV that is not a finite number (`-Inf`, `NaN`), or that changes by thousands for one added
+variance, usually means that the importance-sampling likelihood broke down, not that the model got
+better. Such a model is flagged `invalid` and never adopted; look at the standard error of the
+likelihood in its `summary.txt`, compare with `linearization = TRUE`, and use `max_rse` to
+require a well estimated new variance.
 
 The LRT of a variance is approximate: the null value (0) is on the boundary of the parameter
 space, so the test is conservative, and an importance-sampling likelihood is itself
@@ -104,9 +137,9 @@ init_monolix("iov_project.mlxtran")
 res <- test_variability("iov_project.mlxtran", output_dir = "iov_project/IOV_test", level = "OCC")
 res$runs
 
-# Stepwise selection, with a quick scenario
+# Stepwise selection, with a quick scenario; safe to launch again after an interruption
 res <- test_variability("iov_project.mlxtran", output_dir = "iov_project/IOV_forward",
-                        level = "OCC", forward = TRUE, alpha = 0.05,
+                        level = "OCC", forward = TRUE, alpha = 0.05, resume = TRUE,
                         scenario = list(tasks = c(populationParameterEstimation = TRUE,
                                                   conditionalDistributionSampling = TRUE,
                                                   logLikelihoodEstimation = TRUE),

@@ -255,10 +255,9 @@ kable_param_table <- function(
 #'   Blocks of values that are missing from `data` (or empty in both models, e.g. no standard
 #'   errors) are left out.
 #' @param labels Names of the two models in the column headers.
-#' @param change How the change of each value is shown, `"rel"` (relative, in percent) or
-#'   `"abs"` (absolute difference, in the unit of the value: percentage points for RSE and
-#'   shrinkage). Named by value; default: relative for the estimates, absolute for RSE and
-#'   shrinkage, which are already percentages. The change is always `second - first`.
+#' @param change How the change of each value is shown, `"abs"` (absolute difference, in the unit
+#'   of the value: percentage points for RSE and shrinkage) or `"rel"` (relative, in percent). Named
+#'   by value; default: absolute for all three. The change is always `second - first`.
 #' @param caption Table caption.
 #' @param rse_thresholds,shrink_thresholds,thresholds_colors Thresholds and colours of the
 #'   highlighting, as in [kable_param_table()].
@@ -274,7 +273,7 @@ kable_param_table <- function(
 kable_param_comparison <- function(
     data,
     labels  = c("Model 1", "Model 2"),
-    change  = c(estimate = "rel", rse_pct = "abs", shrinkage = "abs"),
+    change  = c(estimate = "abs", rse_pct = "abs", shrinkage = "abs"),
     caption = "Parameter estimates, relative standard errors and shrinkage",
     rse_thresholds    = list(high = 100, fe_med = 50, fe_low = 30, re_med = 70, re_low = 50),
     shrink_thresholds = list(high = 100, med = 60, low = 40),
