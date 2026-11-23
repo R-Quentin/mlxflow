@@ -8,9 +8,9 @@
 
 # 1. Set-up: packages & helpers ================================================
 
-# Lixoft connectors
+# Lixoft connectors (make sure to restart session before running)
 library(lixoftConnectors) 
-initializeLixoftConnectors(software = "monolix")
+initializeLixoftConnectors(software = "monolix") 
 
 # Useful packages
 # install.packages("kableExtra", "rmarkdown", "tidyverse")
@@ -793,8 +793,9 @@ compare_models(dir = "warfarin_example/COSSAC", values = "estimate", clean = TRU
 {
   set <- getAssessmentSettings()
   set$nbRuns             <- 10
+  set$nextToProject      <- FALSE
   set$extendedEstimation <- TRUE
-  set$useLin             <- TRUE
+  set$useLin             <- FALSE
   set$initialParameters  <- data.frame(
     parameters = c("ka_pop", "V_pop", "Cl_pop"),
     min = c(0.1, 0.1, 0.01), max = c(10, 10, 1),
@@ -826,18 +827,22 @@ convergence_data$final |>
     )
 
 
-# -> The assessment can also be read from the Assessment folder written by Monolix (no .rds needed):
-plot_convergence_assessment("warfarin_final", which = "iterations")
+# -> Reading the assessment back, without the R session
+# The model folder (or its Assessment folder) can be given directly:
+plot_convergence_assessment("warfarin_final", which = "estimates", ci = TRUE)
 # convergence_data <- tidy_convergence_assessment("warfarin_final")
-# AssessmentResults <- read_assessment("warfarin_final/Assessment")
-# plot_convergence_assessment(AssessmentResults, which = "iterations")
+# AssessmentResults <- read_assessment("warfarin_final")
+
+# NB: the run folders hold the final estimates only (the SAEM trajectories are not written there
+# unless the charts of each run exist). "iterations" is drawn when the AssessmentResults.rds saved
+# above is in the model folder or in its Assessment folder, which is why it is worth keeping.
+plot_convergence_assessment("warfarin_final", which = "iterations")
 
 
 # -> It can also be a section of the model report let's re-run diagnostics:
-# plot_convergence_assessment("warfarin_final/Assessment", which = "estimates", ci = TRUE)
-# NB: the "iterations" plot needs the SAEM trajectories (ChartsData/Saem/CvParam.txt of each run)
-# If assessment = NULL, run_diagnostics() uses <model_dir>/Assessment when it exists.
-run_diagnostics("warfarin_final", assessment = "warfarin_final/AssessmentResults.rds")
+# assessment = NULL (default): uses <model_dir>/Assessment, or <model_dir>/AssessmentResults.rds
+run_diagnostics("warfarin_final")
+# or choose it: assessment = "warfarin_final/AssessmentResults.rds" (or a folder, or the object)
 
 
 

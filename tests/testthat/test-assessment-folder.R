@@ -55,3 +55,36 @@ test_that("run_diagnostics uses the Assessment folder of the model when there is
   writeLines(c("---", "title: stub", "output: html_document", "params:", "  model_dir: x", "  save_output: FALSE", "  output_dir: ''", "  prefix: ''", "---", "", "ok"), "t2.Rmd")
   expect_no_error(suppressWarnings(suppressMessages(run_diagnostics("mod", workflow = "t2.Rmd"))))
 })
+
+test_that("the model folder is accepted, and its own results are not mistaken for a run", {
+  model <- withr::local_tempdir()
+  make_assessment(file.path(model, "Assessment"), n_runs = 2)
+  writeLines(c("parameter,value,CV,se_lin", "V_pop,9,,0.1"), file.path(model, "populationParameters.txt"))   # the model itself
+  dir.create(file.path(model, "ChartsData", "Saem"), recursive = TRUE)
+  writeLines(c("iteration,convergenceIndicator,phase,V_pop", "1,1,1,5", "2,1,2,9"), file.path(model, "ChartsData", "Saem", "CvParam.txt"))
+  res <- read_assessment(model)
+  expect_length(res, 2)                                                    # not 3: the model is not a run
+  expect_false(attr(res, "trajectories"))
+  expect_equal(nlevels(tidy_convergence_assessment(model)$final$run), 2)
+})
+
+test_that("an AssessmentResults.rds next to the runs is used: it holds the trajectories", {
+  model <- withr::local_tempdir(); make_assessment(file.path(model, "Assessment"), n_runs = 2)
+  full <- read_assessment(make_assessment(withr::local_tempdir(), n_runs = 2, trajectories = TRUE))
+  saveRDS(full, file.path(model, "Assessment", "AssessmentResults.rds"))
+  expect_message(res <- read_assessment(model), "SAEM trajectories")
+  expect_true(attr(res, "trajectories"))
+  # also kept in the model folder, which run_diagnostics() looks at
+  model2 <- withr::local_tempdir(); saveRDS(full, file.path(model2, "AssessmentResults.rds"))
+  expect_true(attr(suppressMessages(read_assessment(model2)), "trajectories"))
+})
+
+test_that("the standard errors of getAssessmentResults() (alphabetical vector) are matched by parameter name", {
+  conv <- data.frame(Tlag_pop = 1, ka_pop = 2, V_pop = 3, Cl_pop = 4, omega_ka = 5, a = 6, convergenceIndicator = 1)
+  # the vector comes sorted: Cl_pop, Tlag_pop, V_pop, a, ka_pop, omega_ka
+  res <- list(list(populationParameters = list(convergence = conv), standardErrors = list(method = "linearization", values = c(0.4, 0.1, 0.3, 0.6, 0.2, 0.5)),
+                   loglikelihood = list()))
+  fin <- tidy_convergence_assessment(res)$final
+  expect_equal(setNames(fin$se, fin$parameter)[c("Tlag_pop", "ka_pop", "V_pop", "Cl_pop", "omega_ka", "a")],
+               c(Tlag_pop = 0.1, ka_pop = 0.2, V_pop = 0.3, Cl_pop = 0.4, omega_ka = 0.5, a = 0.6))
+})

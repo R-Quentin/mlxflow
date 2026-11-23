@@ -23,8 +23,8 @@
 #' @param assessment Optional convergence assessment, shown as an extra section: the
 #'   object returned by `lixoftConnectors::getAssessmentResults()`, the path of an .rds
 #'   file holding it, or an `Assessment` folder written by Monolix (see [read_assessment()]).
-#'   `NULL` (default): the `Assessment` folder of the model (`<model_dir>/Assessment`) is used
-#'   when it exists, otherwise the section is left out. See [plot_convergence_assessment()].
+#'   `NULL` (default): the `Assessment` folder of the model (`<model_dir>/Assessment`), or failing that
+#'   `<model_dir>/AssessmentResults.rds`, is used when it exists, otherwise the section is left out. See [plot_convergence_assessment()].
 #'
 #' @return The path of the html report, invisibly.
 #' @export
@@ -57,10 +57,13 @@ run_diagnostics <- function(model_dir,
                  output_dir  = if (is.null(output_dir)) "" else output_dir,
                  prefix      = prefix)
   # Without an explicit assessment, the Assessment folder of the model is used when there is one
-  if (is.null(assessment) && dir.exists(file.path(model_dir, "Assessment")) &&
-      .template_has_param(template, "assessment")) {
-    assessment <- file.path(model_dir, "Assessment")
-    message("Convergence assessment read from ", assessment)
+  if (is.null(assessment) && .template_has_param(template, "assessment")) {
+    found <- c(file.path(model_dir, "Assessment"), file.path(model_dir, "AssessmentResults.rds"))
+    found <- found[file.exists(found)]
+    if (length(found) > 0) {
+      assessment <- found[1]
+      message("Convergence assessment read from ", assessment)
+    }
   }
   if (is.character(assessment) && length(assessment) == 1) assessment <- normalizePath(assessment, winslash = "/", mustWork = FALSE)
   # Only passed when given: a custom template that does not declare it keeps working

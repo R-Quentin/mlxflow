@@ -37,8 +37,8 @@ given, otherwise the model folder name).}
 \item{assessment}{Optional convergence assessment, shown as an extra section: the
 object returned by `lixoftConnectors::getAssessmentResults()`, the path of an .rds
 file holding it, or an `Assessment` folder written by Monolix (see [read_assessment()]).
-`NULL` (default): the `Assessment` folder of the model (`<model_dir>/Assessment`) is used
-when it exists, otherwise the section is left out. See [plot_convergence_assessment()].}
+`NULL` (default): the `Assessment` folder of the model (`<model_dir>/Assessment`), or failing that
+`<model_dir>/AssessmentResults.rds`, is used when it exists, otherwise the section is left out. See [plot_convergence_assessment()].}
 }
 \value{
 The path of the html report, invisibly.

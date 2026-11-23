@@ -139,7 +139,9 @@ test_that("a convergence assessment is reshaped and plotted", {
   expect_equal(levels(tidy$iterations$parameter)[1], "convergenceIndicator")
   expect_equal(nrow(tidy$final), 3 * 2)
   expect_equal(tidy$final$estimate[1:2], c(1.4, 8))
-  expect_equal(round(tidy$final$ymax[1], 3), round(1.4 + 1.96 * 0.2, 3))
+  # the standard errors come alphabetically (V_pop before ka_pop): 0.2 is V_pop's, 0.3 ka_pop's
+  expect_equal(round(tidy$final$ymax[1], 3), round(1.4 + 1.96 * 0.3, 3))
+  expect_equal(round(tidy$final$ymax[2], 3), round(8 + 1.96 * 0.2, 3))
   expect_s3_class(plot_convergence_assessment(res), "ggplot")
   expect_s3_class(plot_convergence_assessment(res, which = "estimates", ci = TRUE), "ggplot")
   rds <- withr::local_tempfile(fileext = ".rds"); saveRDS(res, rds)

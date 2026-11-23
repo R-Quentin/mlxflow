@@ -43,8 +43,11 @@ tidy_convergence_assessment <- function(results) {
     last <- last[nrow(last), setdiff(names(last), "convergenceIndicator"), drop = FALSE]
     out  <- tibble::tibble(parameter = names(last), estimate = as.numeric(unlist(last)))
     se   <- res$standardErrors$values
-    out$se  <- if (!is.null(names(se))) as.numeric(se[out$parameter])            # read from a folder: by name
-               else if (length(se) == nrow(out)) as.numeric(se) else NA_real_
+    # getAssessmentResults() gives the standard errors as a plain vector in alphabetical order of the
+    # parameter names (capitals first: Cl_pop, Tlag_pop, ..., a, b, beta_..., ka_pop, omega_...), not in
+    # the order of the convergence columns: they are matched by name. A folder reading is named already.
+    if (is.null(names(se)) && length(se) == nrow(out)) names(se) <- sort(out$parameter, method = "radix")
+    out$se  <- if (!is.null(names(se))) as.numeric(se[out$parameter]) else NA_real_
     out$run <- factor(idx, levels = run_levels)
     out
   }) |>
@@ -136,7 +139,11 @@ plot_convergence_assessment <- function(results, which = c("iterations", "estima
 #' only the final estimates are available (the `"iterations"` plot is then not possible). If the
 #' run folders are missing, `assessment.txt` is used (final estimates only, no standard errors).
 #'
-#' @param assessment_dir The `Assessment` folder (e.g. `file.path(model_dir, "Assessment")`).
+#' @param assessment_dir The `Assessment` folder (e.g. `file.path(model_dir, "Assessment")`); the
+#'   model folder is accepted as well, its `Assessment` sub-folder is then read. If an
+#'   `AssessmentResults.rds` is next to the runs, in the folder or in the model folder (what
+#'   `saveRDS(getAssessmentResults(), ...)` writes), it is read instead: it holds the SAEM trajectories,
+#'   which the run folders do not when their charts were not computed.
 #'
 #' @return A list with one element per run, laid out like the output of
 #'   `getAssessmentResults()` (`populationParameters$convergence`, `standardErrors`,
@@ -150,15 +157,30 @@ plot_convergence_assessment <- function(results, which = c("iterations", "estima
 read_assessment <- function(assessment_dir) {
   if (!dir.exists(assessment_dir)) stop("Assessment folder not found: ", assessment_dir, call. = FALSE)
 
-  pop_files <- list.files(assessment_dir, pattern = "^populationParameters\\.txt$", recursive = TRUE, full.names = TRUE)
-  pop_files <- pop_files[!grepl("\\.Internals", pop_files)]
-  run_no    <- suppressWarnings(as.integer(sub(".*Assessment_([0-9]+).*", "\\1", pop_files)))
-  pop_files <- pop_files[order(run_no, pop_files)]
+  # The model folder is accepted too: its Assessment sub-folder is the one that is read
+  folders <- unique(c(assessment_dir, if (dir.exists(file.path(assessment_dir, "Assessment"))) file.path(assessment_dir, "Assessment")))
+  has_runs <- function(d) any(grepl("^Assessment_[0-9]+$", list.dirs(d, recursive = FALSE, full.names = FALSE)))
+  run_folder <- folders[vapply(folders, has_runs, logical(1))][1]
 
-  runs <- if (length(pop_files) > 0) {
-    lapply(pop_files, .read_assessment_run)
+  # An AssessmentResults.rds kept next to the runs holds the SAEM trajectories that the folder lacks
+  for (d in folders) {
+    rds <- file.path(d, "AssessmentResults.rds")
+    if (file.exists(rds)) {
+      message("Assessment read from ", rds, " (it holds the SAEM trajectories).")
+      runs <- readRDS(rds)
+      attr(runs, "trajectories") <- any(vapply(runs, function(r) nrow(r$populationParameters$convergence) > 1, logical(1)))
+      return(runs)
+    }
+  }
+
+  runs <- if (!is.na(run_folder)) {
+    # Only the Assessment_NNN folders: the model's own populationParameters.txt is not a run
+    pop_files <- list.files(run_folder, pattern = "^populationParameters\\.txt$", recursive = TRUE, full.names = TRUE)
+    pop_files <- pop_files[grepl("^Assessment_[0-9]+$", basename(dirname(pop_files)))]
+    run_no    <- as.integer(sub("^Assessment_", "", basename(dirname(pop_files))))
+    lapply(pop_files[order(run_no, pop_files)], .read_assessment_run)
   } else {
-    .read_assessment_summary(file.path(assessment_dir, "assessment.txt"))
+    .read_assessment_summary(file.path(folders[length(folders)], "assessment.txt"))
   }
   attr(runs, "trajectories") <- any(vapply(runs, function(r) nrow(r$populationParameters$convergence) > 1, logical(1)))
   runs

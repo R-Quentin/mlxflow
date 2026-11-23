@@ -1,6 +1,6 @@
 Package: mlxflow
 Title: Model Building and Diagnostics Workflow for 'Monolix'
-Version: 0.1.0
+Version: 0.1.1
 Authors@R: 
     person("Quentin", "Renou", email = "quentin.renou@amu-univ.fr", role = c("aut", "cre"))
 Description: Automates covariate model building for population pharmacokinetic

@@ -7,7 +7,11 @@
 read_assessment(assessment_dir)
 }
 \arguments{
-\item{assessment_dir}{The `Assessment` folder (e.g. `file.path(model_dir, "Assessment")`).}
+\item{assessment_dir}{The `Assessment` folder (e.g. `file.path(model_dir, "Assessment")`); the
+model folder is accepted as well, its `Assessment` sub-folder is then read. If an
+`AssessmentResults.rds` is next to the runs, in the folder or in the model folder (what
+`saveRDS(getAssessmentResults(), ...)` writes), it is read instead: it holds the SAEM trajectories,
+which the run folders do not when their charts were not computed.}
 }
 \value{
 A list with one element per run, laid out like the output of
